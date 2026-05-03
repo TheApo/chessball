@@ -5,6 +5,7 @@ import com.apogames.chessball.ai.ChessBallStep;
 import com.apogames.chessball.ai.You;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.DrawString;
+import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
@@ -375,6 +376,18 @@ public class ChessBallGame extends ChessBallModel {
             Constants.SHOW_COORDS = !Constants.SHOW_COORDS;
             keys[Input.Keys.F2] = false; // edge-trigger
         }
+        // Any time-driven state (move animation, win-text fade, AI delay, AI thinking
+        // status) changes visuals without user input. The HTML backend skips render()
+        // by default unless markDirty() is called, so animations only show when we
+        // explicitly request a redraw. Desktop/Android always render and don't need this.
+        boolean animating = this.timeWaitUntilMove > 0
+                || (this.stepsToGo != null && !this.stepsToGo.isEmpty())
+                || this.time > 0
+                || (!this.isHumanPlayerTurn() && !this.isWon());
+        if (animating) {
+            Game.markDirty();
+        }
+
         if (this.timeWaitUntilMove > 0) {
             this.timeWaitUntilMove -= delta;
         } else if (this.stepsToGo != null && !this.stepsToGo.isEmpty()) {

@@ -2,6 +2,7 @@ package com.apogames.chessball.game.puzzle;
 
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
+import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.backend.io.IOOnlineLibgdx;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.game.ChessBallModel;
@@ -396,7 +397,11 @@ public class ChessBallPuzzle extends ChessBallModel {
             this.restart();
             return;
         }
+        // Win-text fade animates without user input — HTML backend skips render()
+        // unless markDirty() is called, so we explicitly request redraws while the
+        // fade is running. Desktop/Android always render and don't need this.
         if (this.time > 0) {
+            Game.markDirty();
             this.time -= delta;
             if (this.time <= 0 && this.imageTextIndex <= 17) {
                 this.winCheck(this.chessBallWinState);

@@ -2,6 +2,7 @@ package com.apogames.chessball.game.tutorial;
 
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
+import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
@@ -293,7 +294,9 @@ public class ChessBallTutorial extends ChessBallModel {
             this.restart();
             return;
         }
+        // Win-text fade animates without user input — see ChessBallGame.doThink.
         if (this.time > 0) {
+            Game.markDirty();
             this.time -= delta;
             if (this.time <= 0 && this.imageTextIndex <= 17) {
                 this.winCheck(this.chessBallWinState);

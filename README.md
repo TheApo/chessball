@@ -126,7 +126,6 @@ So now the AI tries.
 | Desktop          | LWJGL3                                                 |
 | Web              | [gdx-teavm](https://github.com/xpenatan/gdx-teavm) **1.5.3** (replaces GWT — TeaVM compiles Java to JS) |
 | Android          | Standard libGDX Android module + Gradle 8.x           |
-| Backend (demos)  | PHP 5.3 + PDO/MySQL — see [`php/`](php/)               |
 | Build            | Gradle wrapper (8.13)                                  |
 
 Multi-module layout, the standard libGDX way:
@@ -138,7 +137,6 @@ chessball/
 ├── android/      ← Android launcher + manifest
 ├── teavm/        ← TeaVM web build
 ├── assets/       ← shared sprites, fonts, sounds
-├── php/          ← optional server-side demo storage
 └── screenshots/  ← (the pretty pictures above)
 ```
 

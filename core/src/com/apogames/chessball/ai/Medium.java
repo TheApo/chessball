@@ -13,17 +13,17 @@ import java.util.List;
 public class Medium extends AlphaBetaAI {
 
     public Medium() {
-        super("Medium", 2, 500L);
+        super("Medium", 2, 1000L);
     }
 
-    @Override protected long defenseCheckMs()    { return 60L; }
-    @Override protected int  defenseMaxChecked() { return 5; }
+    @Override protected long defenseCheckMs()    { return 400L; }
+    @Override protected int  defenseMaxChecked() { return 500; }
 
     @Override
     protected List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking) {
         if (ranking.isEmpty()) return Collections.emptyList();
         if (isCritical(ranking) || ranking.size() < 2) return ranking.get(0).turn;
-        if (RNG.nextInt(100) < 5)                     return ranking.get(1).turn;
+        if (RNG.nextInt(100) < 50)                     return ranking.get(1).turn;
         return ranking.get(0).turn;
     }
 }

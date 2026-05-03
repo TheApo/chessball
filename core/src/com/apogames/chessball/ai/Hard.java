@@ -19,7 +19,7 @@ import java.util.List;
  */
 public class Hard extends AlphaBetaAI {
 
-    public Hard() { super("Hard", 3, 800L); }
+    public Hard() { super("Hard", 3, 2000L); }
 
     // Per-candidate is a TIMEOUT (max). 1000 ms gives the DFS room to find
     // 4-action killer sequences (e.g. pass-pass-queenmove-pass). The 10 s wall

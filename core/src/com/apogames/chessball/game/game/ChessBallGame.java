@@ -453,6 +453,13 @@ public class ChessBallGame extends ChessBallModel {
                     .getBoard()[step.getFigureX()][step.getFigureY()] = ChessBallFigure.EMPTY;
             this.getBoard()
                     .getBoard()[step.getStepFigureX()][step.getStepFigureY()] = chessBallFigure;
+            // Reset movement offsets at BOTH endpoints. Without this, the source's
+            // stale offset (set during this animation) would mis-render any later
+            // piece that lands on this square, and a later step with dx=0 (or dy=0)
+            // could never terminate because the termination check is "vector ==
+            // delta" — a stale vector.x=1 vs delta=0 deadlocks the animation.
+            this.getBoard().getMovement()[step.getFigureX()][step.getFigureY()].set(0f, 0f);
+            this.getBoard().getMovement()[step.getStepFigureX()][step.getStepFigureY()].set(0f, 0f);
             this.stepsToGo.remove(step);
             this.getBoard().deleteCircle();
 

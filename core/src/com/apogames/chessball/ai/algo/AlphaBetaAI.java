@@ -49,6 +49,10 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
     private final String name;
     private final int maxDepth;
     private final long timeBudgetMs;
+    /** Set per-update from {@link ChessBallAIInformations#isBlack()}. The AI thinks
+     *  in white-POV always; this flag tells {@link #describeTurn} whether to un-mirror
+     *  coordinates so log lines match what the user sees on screen. */
+    private boolean isBlack;
 
     protected AlphaBetaAI(String name, int maxDepth, long timeBudgetMs) {
         this.name = name;
@@ -61,6 +65,7 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
     @Override
     public List<ChessBallStep> update(ChessBallAIInformations info) {
         ChessBallFigure[][] board = info.getBoard();
+        this.isBlack = info.isBlack();
         long deadline = System.currentTimeMillis() + timeBudgetMs;
 
         List<List<ChessBallStep>> rootTurns = TurnGenerator.generate(board, true);
@@ -157,18 +162,29 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         Gdx.app.log("AI-Defense",
                 getName() + ": " + checkedCount + " checked, " + unsafeCount + " unsafe, "
                 + newHangCount + " creates-new-hang, " + fixedHangCount + " fixes-hang. Picked "
-                + describeTurn(out.get(0).turn) + " (final score " + out.get(0).score + ")");
+                + describeTurn(out.get(0).turn, isBlack) + " (final score " + out.get(0).score + ")");
         return out;
     }
 
-    private static String describeTurn(List<ChessBallStep> turn) {
+    /** Format a turn for logging in REAL-board coordinates. AI internals always
+     *  treat the AI as white, so when the AI plays black the on-screen coords
+     *  are mirrored x↔(W-1-x), y↔(H-1-y); we un-mirror here so log lines match
+     *  what the user sees. */
+    private static String describeTurn(List<ChessBallStep> turn, boolean mirrored) {
         if (turn == null || turn.isEmpty()) return "<empty>";
         StringBuilder sb = new StringBuilder();
+        int w = 9, h = 15;
         for (int i = 0; i < turn.size(); i++) {
             ChessBallStep s = turn.get(i);
+            int fx = s.getFigureX(), fy = s.getFigureY();
+            int tx = s.getStepFigureX(), ty = s.getStepFigureY();
+            if (mirrored) {
+                fx = w - 1 - fx; fy = h - 1 - fy;
+                tx = w - 1 - tx; ty = h - 1 - ty;
+            }
             if (i > 0) sb.append(' ');
-            sb.append('(').append(s.getFigureX()).append(',').append(s.getFigureY()).append(")->(")
-              .append(s.getStepFigureX()).append(',').append(s.getStepFigureY()).append(')');
+            sb.append('(').append(fx).append(',').append(fy).append(")->(")
+              .append(tx).append(',').append(ty).append(')');
         }
         return sb.toString();
     }

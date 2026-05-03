@@ -17,10 +17,12 @@ public class ChessBallAIInformations {
     private final int movesPossible;
 
     private final ChessBallFigure[][] board;
+    private final boolean isBlack;
 
     public ChessBallAIInformations(ChessBallBoard board, boolean isBlack) {
         this.leftPasses = board.getPassesLeft();
         this.movesPossible = board.getPlayersMove();
+        this.isBlack = isBlack;
 
         // switch positions for player black, that he thinks he is white
         if (isBlack) {
@@ -58,6 +60,13 @@ public class ChessBallAIInformations {
 
     public int getLeftPasses() {
         return leftPasses;
+    }
+
+    /** True if the original board was mirrored x↔(W-1-x), y↔(H-1-y) and colors
+     *  swapped because this AI plays as black. AI logic always treats itself as
+     *  white internally; un-mirror coords with this flag when logging. */
+    public boolean isBlack() {
+        return isBlack;
     }
 
     public int getScoreWhite() {

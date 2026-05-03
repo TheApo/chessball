@@ -39,7 +39,7 @@ public class Constants {
     public static final int TEXT_TIME_IN_MILLISECONDS = 1500;
     public static final int WAIT_UNTIL_MOVE_IN_MILLISECONDS = 500;
 
-    public static float[] COLOR_CLEAR = new float[]{184f / 255f, 224f / 255f, 255f / 255f, 1f};
+    public static float[] COLOR_CLEAR = new float[]{62f / 255f, 98f / 255f, 28f / 255f, 1f};
 
     public static final float[] COLOR_WHITE = new float[]{255f / 255f, 255f / 255f, 255f / 255f, 1f};
     public static final float[] COLOR_BROWN = new float[]{60f / 255f, 40f / 255f, 30f / 255f, 1f};

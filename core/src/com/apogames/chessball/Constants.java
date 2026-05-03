@@ -33,7 +33,8 @@ public class Constants {
     public static final int MAX_MOVES = 1;
     public static final int MAX_PIECE_CHANGE = MAX_MOVES;
 
-    public static final String DEMO_GETPHP = "https://www.apo-games.de/chessball/get_demo_random.php";
+    public static final String DEMO_GETPHP  = "https://www.apo-games.de/chessball/get_demo_random.php";
+    public static final String DEMO_SAVEPHP = "https://www.apo-games.de/chessball/save_demo.php";
 
     public static final int TEXT_TIME_IN_MILLISECONDS = 1500;
     public static final int WAIT_UNTIL_MOVE_IN_MILLISECONDS = 500;
@@ -72,6 +73,9 @@ public class Constants {
     public static final float[] COLOR_BUTTONS = new float[]{55f / 255f, 44f / 255f, 72f / 255f, 1f};
 
     public static boolean HELP_TIMER = false;
+
+    /** Debug overlay: render "x,y" on every board cell. Press F2 in-game to toggle. */
+    public static boolean SHOW_COORDS = false;
 
     public static boolean IS_ANDROID = false;
     public static boolean IS_HTML = false;
@@ -150,6 +154,55 @@ public class Constants {
     public static final String STRING_OPTIONS_LANGUAGE_GER = "Sprache";
     public static String STRING_OPTIONS_LANGUAGE = STRING_OPTIONS_LANGUAGE_GER;
 
+    // --- End-of-game dialog ----------------------------------------------------------
+    public static final String STRING_DIALOG_CONGRATS_ENG = "Congratulations!";
+    public static final String STRING_DIALOG_CONGRATS_GER = "Glueckwunsch!";
+    public static String STRING_DIALOG_CONGRATS = STRING_DIALOG_CONGRATS_GER;
+
+    public static final String STRING_DIALOG_TOO_BAD_ENG = "Too bad!";
+    public static final String STRING_DIALOG_TOO_BAD_GER = "Schade!";
+    public static String STRING_DIALOG_TOO_BAD = STRING_DIALOG_TOO_BAD_GER;
+
+    public static final String STRING_DIALOG_WINNER_ENG = "Winner";
+    public static final String STRING_DIALOG_WINNER_GER = "Sieger";
+    public static String STRING_DIALOG_WINNER = STRING_DIALOG_WINNER_GER;
+
+    public static final String STRING_DIALOG_NEXT_ENG = "Next";
+    public static final String STRING_DIALOG_NEXT_GER = "Weiter";
+    public static String STRING_DIALOG_NEXT = STRING_DIALOG_NEXT_GER;
+
+    public static final String STRING_DIALOG_BACK_ENG = "Back";
+    public static final String STRING_DIALOG_BACK_GER = "Zurueck";
+    public static String STRING_DIALOG_BACK = STRING_DIALOG_BACK_GER;
+
+    public static final String STRING_DIALOG_PASSES_ENG = "Passes";
+    public static final String STRING_DIALOG_PASSES_GER = "Paesse";
+    public static String STRING_DIALOG_PASSES = STRING_DIALOG_PASSES_GER;
+
+    public static final String STRING_DIALOG_MOVES_ENG = "Moves";
+    public static final String STRING_DIALOG_MOVES_GER = "Zuege";
+    public static String STRING_DIALOG_MOVES = STRING_DIALOG_MOVES_GER;
+
+    public static final String STRING_DIALOG_CAPTURED_ENG = "Captured";
+    public static final String STRING_DIALOG_CAPTURED_GER = "Geschlagen";
+    public static String STRING_DIALOG_CAPTURED = STRING_DIALOG_CAPTURED_GER;
+
+    public static final String STRING_DIALOG_LOST_ENG = "Lost";
+    public static final String STRING_DIALOG_LOST_GER = "Verloren";
+    public static String STRING_DIALOG_LOST = STRING_DIALOG_LOST_GER;
+
+    public static final String STRING_DIALOG_WHITE_ENG = "White";
+    public static final String STRING_DIALOG_WHITE_GER = "Weiss";
+    public static String STRING_DIALOG_WHITE = STRING_DIALOG_WHITE_GER;
+
+    public static final String STRING_DIALOG_BLACK_ENG = "Black";
+    public static final String STRING_DIALOG_BLACK_GER = "Schwarz";
+    public static String STRING_DIALOG_BLACK = STRING_DIALOG_BLACK_GER;
+
+    public static final String STRING_LANG_PICKER_ENG = "Choose language";
+    public static final String STRING_LANG_PICKER_GER = "Sprache waehlen";
+    public static String STRING_LANG_PICKER = STRING_LANG_PICKER_GER;
+
     static {
         REGION = "de";
         try {
@@ -162,30 +215,29 @@ public class Constants {
 
     public static void setLanguage(final String region) {
         REGION = region;
-        if ((region != null) && (region.equals("de"))) {
-            STRING_LOVE_TEXT = STRING_LOVE_TEXT_GER;
-            STRING_TUTORIAL_TEXT = STRING_TUTORIAL_TEXT_GER;
-            STRING_TUTORIAL_0_MOVE_TEXT = STRING_TUTORIAL_0_MOVE_TEXT_GER;
-            STRING_MENU_TEXT = STRING_MENU_TEXT_GER;
-            STRING_ANALYSIS_TEXT = STRING_ANALYSIS_TEXT_GER;
-            STRING_ANALYSIS_NEXT_TEXT = STRING_ANALYSIS_NEXT_TEXT_GER;
-            STRING_OPTIONS_LANGUAGE = STRING_OPTIONS_LANGUAGE_GER;
-            STRING_UNDO_TEXT = STRING_UNDO_TEXT_GER;
-            STRING_TUTORIAL_0_MOVE_TEXT_SINGLE = STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_GER;
-            STRING_EASY = STRING_EASY_GER;
-            STRING_TOKEN = STRING_TOKEN_GER;
-        } else {
-            STRING_LOVE_TEXT = STRING_LOVE_TEXT_ENG;
-            STRING_TUTORIAL_TEXT = STRING_TUTORIAL_TEXT_ENG;
-            STRING_TUTORIAL_0_MOVE_TEXT = STRING_TUTORIAL_0_MOVE_TEXT_ENG;
-            STRING_MENU_TEXT = STRING_MENU_TEXT_ENG;
-            STRING_ANALYSIS_TEXT = STRING_ANALYSIS_TEXT_ENG;
-            STRING_ANALYSIS_NEXT_TEXT = STRING_ANALYSIS_NEXT_TEXT_ENG;
-            STRING_OPTIONS_LANGUAGE = STRING_OPTIONS_LANGUAGE_ENG;
-            STRING_UNDO_TEXT = STRING_UNDO_TEXT_ENG;
-            STRING_TUTORIAL_0_MOVE_TEXT_SINGLE = STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_ENG;
-            STRING_EASY = STRING_EASY_ENG;
-            STRING_TOKEN = STRING_TOKEN_ENG;
-        }
+        boolean de = (region != null) && region.equals("de");
+        STRING_LOVE_TEXT                   = de ? STRING_LOVE_TEXT_GER                   : STRING_LOVE_TEXT_ENG;
+        STRING_TUTORIAL_TEXT               = de ? STRING_TUTORIAL_TEXT_GER               : STRING_TUTORIAL_TEXT_ENG;
+        STRING_TUTORIAL_0_MOVE_TEXT        = de ? STRING_TUTORIAL_0_MOVE_TEXT_GER        : STRING_TUTORIAL_0_MOVE_TEXT_ENG;
+        STRING_MENU_TEXT                   = de ? STRING_MENU_TEXT_GER                   : STRING_MENU_TEXT_ENG;
+        STRING_ANALYSIS_TEXT               = de ? STRING_ANALYSIS_TEXT_GER               : STRING_ANALYSIS_TEXT_ENG;
+        STRING_ANALYSIS_NEXT_TEXT          = de ? STRING_ANALYSIS_NEXT_TEXT_GER          : STRING_ANALYSIS_NEXT_TEXT_ENG;
+        STRING_OPTIONS_LANGUAGE            = de ? STRING_OPTIONS_LANGUAGE_GER            : STRING_OPTIONS_LANGUAGE_ENG;
+        STRING_UNDO_TEXT                   = de ? STRING_UNDO_TEXT_GER                   : STRING_UNDO_TEXT_ENG;
+        STRING_TUTORIAL_0_MOVE_TEXT_SINGLE = de ? STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_GER : STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_ENG;
+        STRING_EASY                        = de ? STRING_EASY_GER                        : STRING_EASY_ENG;
+        STRING_TOKEN                       = de ? STRING_TOKEN_GER                       : STRING_TOKEN_ENG;
+        STRING_DIALOG_CONGRATS             = de ? STRING_DIALOG_CONGRATS_GER             : STRING_DIALOG_CONGRATS_ENG;
+        STRING_DIALOG_TOO_BAD              = de ? STRING_DIALOG_TOO_BAD_GER              : STRING_DIALOG_TOO_BAD_ENG;
+        STRING_DIALOG_WINNER               = de ? STRING_DIALOG_WINNER_GER               : STRING_DIALOG_WINNER_ENG;
+        STRING_DIALOG_NEXT                 = de ? STRING_DIALOG_NEXT_GER                 : STRING_DIALOG_NEXT_ENG;
+        STRING_DIALOG_BACK                 = de ? STRING_DIALOG_BACK_GER                 : STRING_DIALOG_BACK_ENG;
+        STRING_DIALOG_PASSES               = de ? STRING_DIALOG_PASSES_GER               : STRING_DIALOG_PASSES_ENG;
+        STRING_DIALOG_MOVES                = de ? STRING_DIALOG_MOVES_GER                : STRING_DIALOG_MOVES_ENG;
+        STRING_DIALOG_CAPTURED             = de ? STRING_DIALOG_CAPTURED_GER             : STRING_DIALOG_CAPTURED_ENG;
+        STRING_DIALOG_LOST                 = de ? STRING_DIALOG_LOST_GER                 : STRING_DIALOG_LOST_ENG;
+        STRING_DIALOG_WHITE                = de ? STRING_DIALOG_WHITE_GER                : STRING_DIALOG_WHITE_ENG;
+        STRING_DIALOG_BLACK                = de ? STRING_DIALOG_BLACK_GER                : STRING_DIALOG_BLACK_ENG;
+        STRING_LANG_PICKER                 = de ? STRING_LANG_PICKER_GER                 : STRING_LANG_PICKER_ENG;
     }
 }

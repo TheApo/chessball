@@ -1,7 +1,9 @@
 package com.apogames.chessball.ai;
 
 import com.apogames.chessball.ai.algo.AlphaBetaAI;
+import com.apogames.chessball.game.enums.ChessBallFigure;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -11,11 +13,15 @@ import java.util.List;
 public class Medium extends AlphaBetaAI {
 
     public Medium() {
-        super("Medium", 2, 400L);
+        super("Medium", 2, 500L);
     }
 
+    @Override protected long defenseCheckMs()    { return 60L; }
+    @Override protected int  defenseMaxChecked() { return 5; }
+
     @Override
-    protected List<ChessBallStep> pickFromRanking(List<RankedTurn> ranking) {
+    protected List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking) {
+        if (ranking.isEmpty()) return Collections.emptyList();
         if (isCritical(ranking) || ranking.size() < 2) return ranking.get(0).turn;
         if (RNG.nextInt(100) < 5)                     return ranking.get(1).turn;
         return ranking.get(0).turn;

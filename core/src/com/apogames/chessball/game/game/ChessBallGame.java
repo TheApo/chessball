@@ -2,6 +2,7 @@ package com.apogames.chessball.game.game;
 
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.ai.ChessBallStep;
+import com.apogames.chessball.ai.You;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.entity.ApoButton;
@@ -10,7 +11,10 @@ import com.apogames.chessball.game.MainPanel;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.enums.ChessBallFigure;
 import com.apogames.chessball.game.enums.ChessBallWinState;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.GridPoint2;
 import com.badlogic.gdx.math.Vector2;
 
@@ -20,6 +24,14 @@ public class ChessBallGame extends ChessBallModel {
 
     public static final String FUNCTION_MENU = "game_menu";
     public static final String FUNCTION_TURNEND = "game_TURNEND";
+    public static final String FUNCTION_NEXT = "game_next";
+    public static final String FUNCTION_BACK = "game_back";
+
+    // End-of-game dialog geometry.
+    private static final int DIALOG_X = 40;
+    private static final int DIALOG_Y = 200;
+    private static final int DIALOG_W = 400;
+    private static final int DIALOG_H = 410;
 
     private boolean[] keys = new boolean[256];
 
@@ -36,6 +48,11 @@ public class ChessBallGame extends ChessBallModel {
     private String currentString;
 
     private List<ChessBallStep> stepsToGo;
+
+    /** Complete-match demo string built turn-by-turn for upload at game-over.
+     *  Format: {@code figX,figY,toX,toY,figType;...;#...#}. */
+    private final StringBuilder currentGameString = new StringBuilder();
+    private boolean demoUploaded = false;
 
     public ChessBallGame(MainPanel mainPanel) {
         super(mainPanel);
@@ -65,8 +82,15 @@ public class ChessBallGame extends ChessBallModel {
         if (Constants.IS_HTML) {
             getMainPanel().getButtonByFunction(FUNCTION_EXIT).setVisible(false);
         }
-        getButtonByFunction(FUNCTION_MENU).setVisible(true);
-        getButtonByFunction(FUNCTION_TURNEND).setVisible(true);
+        applyDialogVisibility(false);
+    }
+
+    /** Toggle bottom-bar play buttons vs end-of-game dialog buttons. */
+    private void applyDialogVisibility(boolean dialogShown) {
+        getButtonByFunction(FUNCTION_MENU).setVisible(!dialogShown);
+        getButtonByFunction(FUNCTION_TURNEND).setVisible(!dialogShown);
+        getButtonByFunction(FUNCTION_NEXT).setVisible(dialogShown);
+        getButtonByFunction(FUNCTION_BACK).setVisible(dialogShown);
     }
 
     @Override
@@ -76,10 +100,42 @@ public class ChessBallGame extends ChessBallModel {
             quit();
         } else if (function.equals(FUNCTION_TURNEND)) {
             this.nextPlayer();
+        } else if (function.equals(FUNCTION_NEXT)) {
+            this.restart();
+            applyDialogVisibility(false);
+        } else if (function.equals(FUNCTION_BACK)) {
+            applyDialogVisibility(false);
+            this.quit();
         }
     }
 
+    private void recordStep(int fx, int fy, int tx, int ty, ChessBallFigure figure) {
+        if (figure == null || figure == ChessBallFigure.EMPTY) return;
+        currentGameString
+            .append(fx).append(',')
+            .append(fy).append(',')
+            .append(tx).append(',')
+            .append(ty).append(',')
+            .append(figure.getFieldValue()).append(';');
+    }
+
+    private void recordTurnEnd() {
+        // Avoid double-# if no step happened in this turn.
+        int len = currentGameString.length();
+        if (len == 0 || currentGameString.charAt(len - 1) == '#') return;
+        currentGameString.append('#');
+    }
+
+    private void uploadDemoIfDone() {
+        if (demoUploaded) return;
+        if (!this.isWon()) return;
+        recordTurnEnd(); // close the final scoring turn
+        demoUploaded = true;
+        this.getMainPanel().getOnline().saveDemo(currentGameString.toString());
+    }
+
     private void nextPlayer() {
+        recordTurnEnd();
         this.getBoard().nextPlayer();
         this.getMainPanel().getAiUpdate().reset();
 
@@ -115,6 +171,12 @@ public class ChessBallGame extends ChessBallModel {
 
         if (this.choosenFigure != null) {
             this.getBoard().checkToSetFigure(x, y, this.figurePosition);
+            ChessBallStep applied = this.getBoard().getLastStep();
+            if (applied != null) {
+                recordStep(applied.getFigureX(), applied.getFigureY(),
+                           applied.getStepFigureX(), applied.getStepFigureY(),
+                           this.getBoard().getLastStepFigure());
+            }
         }
 
         ChessBallWinState winState = this.getBoard().winCheck();
@@ -122,6 +184,7 @@ public class ChessBallGame extends ChessBallModel {
             this.time = Constants.TEXT_TIME_IN_MILLISECONDS;
             this.chessBallWinState = winState;
             this.checkImageText(winState);
+            recordTurnEnd();
         } else if (!this.getBoard().isOneStepPossible()) {
             this.nextPlayer();
         }
@@ -160,6 +223,8 @@ public class ChessBallGame extends ChessBallModel {
         ChessBallWinState overWinState = this.getBoard().isGameOver();
         if (overWinState != ChessBallWinState.GAME) {
             this.chessBallWinState = overWinState;
+            applyDialogVisibility(true);
+            uploadDemoIfDone();
         }
     }
 
@@ -278,6 +343,10 @@ public class ChessBallGame extends ChessBallModel {
     private void restart() {
         this.getBoard().reset();
 
+        // Fresh demo string for the new match.
+        currentGameString.setLength(0);
+        demoUploaded = false;
+
         if (this.chessBallWinState == ChessBallWinState.WHITE_WIN) {
             this.getBoard().setCurrentColor(ChessBallColor.BLACK);
         }
@@ -301,6 +370,10 @@ public class ChessBallGame extends ChessBallModel {
         if (keys[Input.Keys.R]) {
             this.restart();
             return;
+        }
+        if (keys[Input.Keys.F2]) {
+            Constants.SHOW_COORDS = !Constants.SHOW_COORDS;
+            keys[Input.Keys.F2] = false; // edge-trigger
         }
         if (this.timeWaitUntilMove > 0) {
             this.timeWaitUntilMove -= delta;
@@ -358,6 +431,11 @@ public class ChessBallGame extends ChessBallModel {
         if (vector.x == step.getStepFigureX() - step.getFigureX() && vector.y == step.getStepFigureY() - step.getFigureY()) {
             ChessBallFigure chessBallFigure = this.getBoard()
                     .getBoard()[step.getFigureX()][step.getFigureY()];
+            ChessBallFigure capturedAtTarget = this.getBoard()
+                    .getBoard()[step.getStepFigureX()][step.getStepFigureY()];
+            this.getBoard().recordAction(chessBallFigure, capturedAtTarget);
+            recordStep(step.getFigureX(), step.getFigureY(),
+                       step.getStepFigureX(), step.getStepFigureY(), chessBallFigure);
             this.getBoard()
                     .getBoard()[step.getFigureX()][step.getFigureY()] = ChessBallFigure.EMPTY;
             this.getBoard()
@@ -374,6 +452,7 @@ public class ChessBallGame extends ChessBallModel {
                     this.time = Constants.TEXT_TIME_IN_MILLISECONDS;
                     this.chessBallWinState = ws;
                     this.checkImageText(ws);
+                    recordTurnEnd();
                 } else {
                     this.nextPlayer();
                 }
@@ -429,6 +508,10 @@ public class ChessBallGame extends ChessBallModel {
             renderMenu();
         }
 
+        if (isWon()) {
+            renderWinDialog();
+        }
+
         for (ApoButton button : this.getMainPanel().getButtons()) {
             button.render(this.getMainPanel(), 0, 0);
         }
@@ -453,19 +536,7 @@ public class ChessBallGame extends ChessBallModel {
         if (this.time > 0) {
             this.getMainPanel().spriteBatch.draw(AssetLoader.text[this.imageTextIndex], 15, Constants.GAME_HEIGHT/2f - 20);
         }
-        if (this.chessBallWinState == ChessBallWinState.BLACK_WIN || this.chessBallWinState == ChessBallWinState.WHITE_WIN) {
-            float x = Constants.GAME_WIDTH / 2f - AssetLoader.winner.getRegionWidth() / 2f;
-            float y = Constants.GAME_HEIGHT / 2f - AssetLoader.winner.getRegionHeight() / 2f;
-            this.getMainPanel().spriteBatch.draw(AssetLoader.winner, x, y);
-
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[21], 15, y + 10);
-            int imageIndex = this.chessBallWinState == ChessBallWinState.BLACK_WIN ? 23 : 22;
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[imageIndex], 15, y + 60);
-            int figureIndex = this.chessBallWinState == ChessBallWinState.BLACK_WIN ? 6 : 0;
-            this.getMainPanel().spriteBatch.draw(AssetLoader.figures[figureIndex], Constants.GAME_WIDTH/2f - AssetLoader.figures[figureIndex].getRegionWidth()/2f, y + 110);
-
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[24], 15, y + AssetLoader.winner.getRegionHeight() - 40);
-        }
+        // win-state visuals are drawn separately in renderWinDialog (see render()).
 
         if (this.currentString != null) {
             this.getMainPanel().drawString(this.currentString, Constants.GAME_WIDTH/2f, Constants.GAME_HEIGHT/2f + 20, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
@@ -481,6 +552,104 @@ public class ChessBallGame extends ChessBallModel {
             this.getMainPanel().spriteBatch.setColor(1, 1, 1, 1f);
             this.getMainPanel().spriteBatch.end();
         }
+    }
+
+    /**
+     * End-of-game dialog: semi-transparent green panel with dark-green border, title
+     * (Glückwunsch / Schade depending on whether You won), winner line, per-side
+     * statistics (Pässe/Züge/Geschlagen/Verloren), then Next + Back buttons (rendered
+     * by {@code MainPanel.getButtons()} so they stay clickable).
+     */
+    private void renderWinDialog() {
+        MainPanel mp = this.getMainPanel();
+
+        // --- Panel + border (ShapeRenderer with alpha blending) ---
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        mp.getRenderer().begin(ShapeType.Filled);
+        mp.getRenderer().setColor(0.05f, 0.40f, 0.05f, 0.88f);
+        mp.getRenderer().roundedRect(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
+        mp.getRenderer().end();
+
+        Gdx.gl20.glLineWidth(3f);
+        mp.getRenderer().begin(ShapeType.Line);
+        mp.getRenderer().setColor(0.02f, 0.20f, 0.02f, 1f);
+        mp.getRenderer().roundedRectLine(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
+        mp.getRenderer().end();
+        Gdx.gl20.glLineWidth(1f);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        // --- Text contents (SpriteBatch) ---
+        boolean youWon = computeYouWon();
+        boolean whiteWon = this.chessBallWinState == ChessBallWinState.WHITE_WIN;
+        String title = youWon ? Constants.STRING_DIALOG_CONGRATS : Constants.STRING_DIALOG_TOO_BAD;
+        String winnerSide = whiteWon ? Constants.STRING_DIALOG_WHITE : Constants.STRING_DIALOG_BLACK;
+        String winnerName = whiteWon ? mp.getPlayerWhite().getName() : mp.getPlayerBlack().getName();
+
+        int centerX = DIALOG_X + DIALOG_W / 2;
+
+        mp.spriteBatch.begin();
+        mp.drawString(title, centerX, DIALOG_Y + 30,
+                Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE);
+        mp.drawString(Constants.STRING_DIALOG_WINNER + ": " + winnerSide + " (" + winnerName + ")",
+                centerX, DIALOG_Y + 70,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+
+        // Stats table — column headers, then 4 rows.
+        int colWhiteX = DIALOG_X + 230;
+        int colBlackX = DIALOG_X + 350;
+        int rowY = DIALOG_Y + 120;
+
+        mp.drawString(Constants.STRING_DIALOG_WHITE, colWhiteX, rowY,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        mp.drawString(Constants.STRING_DIALOG_BLACK, colBlackX, rowY,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+
+        rowY += 40;
+        drawStatRow(Constants.STRING_DIALOG_PASSES,
+                this.getBoard().getPassesWhite(), this.getBoard().getPassesBlack(),
+                colWhiteX, colBlackX, rowY);
+        rowY += 35;
+        drawStatRow(Constants.STRING_DIALOG_MOVES,
+                this.getBoard().getMovesWhite(), this.getBoard().getMovesBlack(),
+                colWhiteX, colBlackX, rowY);
+        rowY += 35;
+        drawStatRow(Constants.STRING_DIALOG_CAPTURED,
+                this.getBoard().getCapturedByWhite(), this.getBoard().getCapturedByBlack(),
+                colWhiteX, colBlackX, rowY);
+        rowY += 35;
+        // "Lost" = pieces of mine captured by the opponent.
+        drawStatRow(Constants.STRING_DIALOG_LOST,
+                this.getBoard().getCapturedByBlack(), this.getBoard().getCapturedByWhite(),
+                colWhiteX, colBlackX, rowY);
+        mp.spriteBatch.end();
+    }
+
+    private void drawStatRow(String label, int whiteVal, int blackVal,
+                             int colWhiteX, int colBlackX, int y) {
+        MainPanel mp = this.getMainPanel();
+        mp.drawString(label, DIALOG_X + 20, y,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN);
+        mp.drawString(String.valueOf(whiteVal), colWhiteX, y,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        mp.drawString(String.valueOf(blackVal), colBlackX, y,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+    }
+
+    /**
+     * "You won" if any human player is on the winning side. If both seats are You,
+     * always congratulations (one of them won).
+     */
+    private boolean computeYouWon() {
+        MainPanel mp = this.getMainPanel();
+        boolean whiteIsYou = mp.getPlayerWhite() instanceof You;
+        boolean blackIsYou = mp.getPlayerBlack() instanceof You;
+        boolean whiteWon = this.chessBallWinState == ChessBallWinState.WHITE_WIN;
+        if (whiteIsYou && blackIsYou) return true;
+        if (whiteIsYou && whiteWon) return true;
+        if (blackIsYou && !whiteWon) return true;
+        return false;
     }
 
 }

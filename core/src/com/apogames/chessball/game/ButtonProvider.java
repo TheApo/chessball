@@ -78,6 +78,14 @@ public class ButtonProvider {
 		//     chessball_buttons.png frames). ---
 		addBarImageButton(ChessBallGame.FUNCTION_MENU,     BAR_RIGHT_X, AssetLoader.buttons[2]);
 		addBarImageButton(ChessBallGame.FUNCTION_TURNEND,  BAR_LEFT_X,  AssetLoader.buttons[1]);
+
+		// End-of-game dialog buttons — hidden by default, toggled in ChessBallGame.applyDialogVisibility().
+		// Use puzzle level button background (chessball_buttons_puzzle.png frame 0), scaled to fit text.
+		addDialogImageButton(ChessBallGame.FUNCTION_NEXT,  70, 540, 140, 50,
+				AssetLoader.puzzle[0], Constants.STRING_DIALOG_NEXT);
+		addDialogImageButton(ChessBallGame.FUNCTION_BACK, 270, 540, 140, 50,
+				AssetLoader.puzzle[0], Constants.STRING_DIALOG_BACK);
+
 		addBarImageButton(ChessBallMenu.FUNCTION_EXIT,     BAR_RIGHT_X, AssetLoader.buttons[3]);
 		addBarImageButton(ChessBallTutorial.FUNCTION_MENU, BAR_RIGHT_X, AssetLoader.buttons[2]);
 		addBarImageButton(ChessBallTutorial.FUNCTION_STEP, BAR_LEFT_X,  AssetLoader.buttons[5]);
@@ -121,6 +129,25 @@ public class ButtonProvider {
 	                               com.badlogic.gdx.graphics.g2d.TextureRegion image) {
 		ApoButton btn = new ApoButtonImage(x, BAR_Y, BAR_W, BAR_H, function, "", image);
 		btn.setStroke(2);
+		this.game.getButtons().add(btn);
+	}
+
+	/** Text-only button used inside the end-of-game dialog. Hidden by default. */
+	private void addDialogButton(String function, int x, int y, int w, int h, String text) {
+		ApoButton btn = new ApoButton(x, y, w, h, function, text);
+		btn.setFont(AssetLoader.font20);
+		btn.setStroke(2);
+		btn.setVisible(false);
+		this.game.getButtons().add(btn);
+	}
+
+	/** Image-backed dialog button (uses chessball_buttons_puzzle scaled to {@code w x h}). */
+	private void addDialogImageButton(String function, int x, int y, int w, int h,
+	                                  com.badlogic.gdx.graphics.g2d.TextureRegion image, String text) {
+		ApoButton btn = new ApoButtonImage(x, y, w, h, function, text, image);
+		btn.setFont(AssetLoader.font20);
+		btn.setStroke(2);
+		btn.setVisible(false);
 		this.game.getButtons().add(btn);
 	}
 }

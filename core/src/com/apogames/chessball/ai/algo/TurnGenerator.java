@@ -9,8 +9,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Enumerates legal turns for a side. A <b>turn</b> is any sequence of up to
@@ -39,9 +41,12 @@ public final class TurnGenerator {
     private static final int W = 9;
     private static final int H = 15;
 
-    private static final int MAX_END_STATES   = 600;
-    private static final int MAX_PASS_BRANCH  = 8;
-    private static final int MAX_PIECE_BRANCH = 12;
+    // Effectively unlimited: only MAX_END_STATES is a real ceiling. Per-node caps
+    // are off so EVERY legal piece move and pass is generated — defensive moves
+    // (e.g. king retreats) don't get cut off because they ranked below an arbitrary K.
+    private static final int MAX_END_STATES   = 50_000;
+    private static final int MAX_PASS_BRANCH  = 1_000;
+    private static final int MAX_PIECE_BRANCH = 1_000;
 
     private TurnGenerator() {}
 
@@ -215,6 +220,63 @@ public final class TurnGenerator {
         }
     }
 
+    /**
+     * Cheap 1-ply tactical check: can the side to move capture any of the OTHER
+     * side's valuable pieces (knight or better, ≥ 4000 material)? Used by the AI
+     * defense filter to avoid moving valuable pieces onto attacked squares.
+     *
+     * <p>Over-cautious: doesn't consider whether the captured piece is defended.
+     * In ChessBall passing on a "good trade" is a smaller mistake than stepping
+     * into a hanging-piece blunder.
+     */
+    public static boolean canCaptureValuablePiece(ChessBallFigure[][] board, boolean attackerIsWhite) {
+        return sumHangingValuableMaterial(board, attackerIsWhite) > 0;
+    }
+
+    /**
+     * Returns the total MATERIAL value of DEFENDER pieces (worth ≥ 4000 = N/B/R/Q)
+     * that the attacker side can capture in a single move. Used by the defense
+     * filter to compute the material delta caused by an AI candidate (penalty
+     * when the move CREATES new hangs; bonus when it FIXES pre-existing hangs).
+     *
+     * <p>Material-weighted (not just count) so a hung queen = 10 000 swings the
+     * score harder than a hung knight = 4 000 — the AI must not trade a knight
+     * for a queen-blunder.
+     */
+    public static int sumHangingValuableMaterial(ChessBallFigure[][] board, boolean attackerIsWhite) {
+        // Map position → material value of the (most valuable) hanging piece there.
+        // Same square can be reached by multiple attackers; only credit it once.
+        Map<Integer, Integer> hangingMaterial = new HashMap<Integer, Integer>();
+        ChessBallBoard sim = new ChessBallBoard();
+        for (int x = 0; x < W; x++) {
+            for (int y = 0; y < H; y++) {
+                ChessBallFigure attacker = board[x][y];
+                if (attacker == null || attacker == ChessBallFigure.EMPTY || attacker == ChessBallFigure.BALL) continue;
+                if (attacker.isWhite() != attackerIsWhite) continue;
+
+                sim.setBoard(board);
+                sim.setCurrentColor(attackerIsWhite ? ChessBallColor.WHITE : ChessBallColor.BLACK);
+                sim.setPossibleStepsForPosition(x, y);
+                ChessBallFigure[][] circles = sim.getCircles();
+                for (int tx = 0; tx < W; tx++) {
+                    for (int ty = 0; ty < H; ty++) {
+                        if (circles[tx][ty] == ChessBallFigure.EMPTY) continue;
+                        ChessBallFigure target = board[tx][ty];
+                        if (target == null || target == ChessBallFigure.EMPTY || target == ChessBallFigure.BALL) continue;
+                        if (target.isWhite() == attackerIsWhite) continue;
+                        int mat = materialOf(target);
+                        if (mat >= 4000) {
+                            hangingMaterial.put(tx * H + ty, mat);
+                        }
+                    }
+                }
+            }
+        }
+        int total = 0;
+        for (Integer v : hangingMaterial.values()) total += v;
+        return total;
+    }
+
     // --- Apply / helpers -----------------------------------------------------------
 
     public static ChessBallFigure[][] applyTurn(ChessBallFigure[][] board, List<ChessBallStep> turn) {
@@ -225,6 +287,139 @@ public final class TurnGenerator {
             result[step.getStepFigureX()][step.getStepFigureY()] = f;
         }
         return result;
+    }
+
+    /**
+     * Exhaustive search (no caps, with deadline) for whether the side to move can
+     * score in a single turn. Returns {@code true} as soon as one scoring sequence
+     * is found; {@code false} if the entire tree was searched without finding a goal,
+     * or if the deadline was exceeded (conservative — assume no goal on timeout).
+     *
+     * <p>Used by {@code Hard} as a defense check: after applying an AI candidate
+     * turn, ask "can the opponent score next?" — if yes, this candidate is unsafe.
+     */
+    public static boolean canScoreInOneTurn(ChessBallFigure[][] board, boolean isWhiteToMove,
+                                            long deadlineMs) {
+        long deadline = System.currentTimeMillis() + deadlineMs;
+        int goalY = isWhiteToMove ? 14 : 0;
+        ChessBallFigure[][] working = copy(board);
+        // Visited cache: states proven not-scoring with the given remaining budget.
+        // Different action orderings often converge to the same board, so without
+        // this cache the 4-action search re-explores the same subtrees thousands of
+        // times and 100 ms isn't enough to find a real killer sequence.
+        Set<Long> visited = new HashSet<Long>();
+        return scoringDfs(working, isWhiteToMove, goalY, 0, 0, new ChessBallBoard(), deadline, visited);
+    }
+
+    private static boolean scoringDfs(ChessBallFigure[][] board, boolean isWhite, int goalY,
+                                      int passesUsed, int piecesUsed,
+                                      ChessBallBoard sim, long deadline, Set<Long> visited) {
+        if (System.currentTimeMillis() >= deadline) return false;
+
+        // Memoize on (boardHash, remainingPasses, remainingPieces). A "false" result
+        // for state S with R remaining actions means S provably cannot score with R
+        // budget. Re-visiting S later with R' <= R also cannot score, so we skip.
+        // Note: the cache only stores misses — hits return immediately above.
+        int remainingKey = (MAX_PASSES - passesUsed) * 4 + (MAX_PIECE_MOVES - piecesUsed);
+        long memoKey = hashBoard(board) * 31L + remainingKey;
+        if (visited.contains(memoKey)) return false;
+
+        // Terminal #1: side to move captured the opponent's king (= they win via NO_KING).
+        ChessBallFigure opponentKing = isWhite ? ChessBallFigure.BLACK_KING : ChessBallFigure.WHITE_KING;
+        boolean opponentKingFound = false;
+        int[] ball = null;
+        for (int x = 0; x < W && (ball == null || !opponentKingFound); x++) {
+            for (int y = 0; y < H; y++) {
+                ChessBallFigure f = board[x][y];
+                if (f == ChessBallFigure.BALL) {
+                    ball = new int[]{x, y};
+                } else if (f == opponentKing) {
+                    opponentKingFound = true;
+                }
+            }
+        }
+        if (!opponentKingFound) return true;
+
+        // Terminal #2: ball in side-to-move's goal.
+        if (ball != null && ball[0] >= 3 && ball[0] <= 5 && ball[1] == goalY) return true;
+
+        if (passesUsed < MAX_PASSES && ball != null
+                && hasFriendlyNeighbour(board, ball[0], ball[1], isWhite)) {
+            sim.setBoard(board);
+            sim.setCurrentColor(isWhite ? ChessBallColor.WHITE : ChessBallColor.BLACK);
+            sim.setPossibleStepsForPosition(ball[0], ball[1]);
+            ChessBallFigure[][] circles = sim.getCircles();
+            int forwardSign = isWhite ? +1 : -1;
+            // Order pass targets by forward-Δy desc so the longest-progress passes
+            // (most likely to reach the goal row) are tried first.
+            List<int[]> passTargets = new ArrayList<int[]>();
+            for (int tx = 0; tx < W; tx++) {
+                for (int ty = 0; ty < H; ty++) {
+                    if (circles[tx][ty] == ChessBallFigure.EMPTY) continue;
+                    if ((ty - ball[1]) * forwardSign < 0) continue;
+                    passTargets.add(new int[]{tx, ty});
+                }
+            }
+            final int by = ball[1];
+            final int fSign = forwardSign;
+            Collections.sort(passTargets, new Comparator<int[]>() {
+                public int compare(int[] a, int[] b) {
+                    return Integer.compare((b[1] - by) * fSign, (a[1] - by) * fSign);
+                }
+            });
+            for (int i = 0; i < passTargets.size(); i++) {
+                int tx = passTargets.get(i)[0];
+                int ty = passTargets.get(i)[1];
+                board[ball[0]][ball[1]] = ChessBallFigure.EMPTY;
+                board[tx][ty] = ChessBallFigure.BALL;
+                boolean ok = scoringDfs(board, isWhite, goalY, passesUsed + 1, piecesUsed, sim, deadline, visited);
+                board[tx][ty] = ChessBallFigure.EMPTY;
+                board[ball[0]][ball[1]] = ChessBallFigure.BALL;
+                if (ok) return true;
+            }
+        }
+
+        if (piecesUsed < MAX_PIECE_MOVES) {
+            // Source-distance pruning is NOT applied (Q/R/B can travel far). Instead
+            // we prune by DESTINATION: only moves that either capture an enemy or
+            // land within 1 cell of the current ball position make sense for a
+            // 1-turn scoring sequence (the moved piece must enable a follow-up pass).
+            for (int x = 0; x < W; x++) {
+                for (int y = 0; y < H; y++) {
+                    ChessBallFigure piece = board[x][y];
+                    if (piece == null || piece == ChessBallFigure.EMPTY || piece == ChessBallFigure.BALL) continue;
+                    if (piece.isWhite() != isWhite) continue;
+
+                    sim.setBoard(board);
+                    sim.setCurrentColor(isWhite ? ChessBallColor.WHITE : ChessBallColor.BLACK);
+                    sim.setPossibleStepsForPosition(x, y);
+                    ChessBallFigure[][] circles = sim.getCircles();
+                    for (int tx = 0; tx < W; tx++) {
+                        for (int ty = 0; ty < H; ty++) {
+                            if (circles[tx][ty] == ChessBallFigure.EMPTY) continue;
+
+                            ChessBallFigure captured = board[tx][ty];
+                            boolean isCapture = captured != null
+                                    && captured != ChessBallFigure.EMPTY
+                                    && captured != ChessBallFigure.BALL;
+                            boolean nearBall = ball != null
+                                    && Math.abs(tx - ball[0]) <= 1
+                                    && Math.abs(ty - ball[1]) <= 1;
+                            if (!isCapture && !nearBall) continue;
+
+                            board[x][y] = ChessBallFigure.EMPTY;
+                            board[tx][ty] = piece;
+                            boolean ok = scoringDfs(board, isWhite, goalY, passesUsed, piecesUsed + 1, sim, deadline, visited);
+                            board[tx][ty] = captured;
+                            board[x][y] = piece;
+                            if (ok) return true;
+                        }
+                    }
+                }
+            }
+        }
+        visited.add(memoKey);
+        return false;
     }
 
     private static int[] findBall(ChessBallFigure[][] board) {

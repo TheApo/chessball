@@ -1,7 +1,9 @@
 package com.apogames.chessball.ai;
 
 import com.apogames.chessball.ai.algo.AlphaBetaAI;
+import com.apogames.chessball.game.enums.ChessBallFigure;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -17,8 +19,12 @@ public class Easy extends AlphaBetaAI {
         super("Easy", 1, 250L);
     }
 
+    @Override protected long defenseCheckMs()    { return 40L; }
+    @Override protected int  defenseMaxChecked() { return 4; }
+
     @Override
-    protected List<ChessBallStep> pickFromRanking(List<RankedTurn> ranking) {
+    protected List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking) {
+        if (ranking.isEmpty()) return Collections.emptyList();
         if (isCritical(ranking) || ranking.size() == 1) {
             return ranking.get(0).turn;
         }

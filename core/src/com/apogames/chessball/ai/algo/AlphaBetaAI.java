@@ -4,11 +4,14 @@ import com.apogames.chessball.ai.ChessBallAIInformations;
 import com.apogames.chessball.ai.ChessBallPlayerAI;
 import com.apogames.chessball.ai.ChessBallStep;
 import com.apogames.chessball.game.enums.ChessBallFigure;
+import com.badlogic.gdx.Gdx;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -40,7 +43,8 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
 
     /** Per-depth beam widths (index = remaining depth). [0]=leaf=unused. */
     private static final int[] BEAM = {0, 12, 18, 28, 40};
-    private static final int ROOT_BEAM = 50;
+    /** Negamax search beam at the root. */
+    private static final int ROOT_BEAM = 80;
 
     private final String name;
     private final int maxDepth;
@@ -62,20 +66,118 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         List<List<ChessBallStep>> rootTurns = TurnGenerator.generate(board, true);
         if (rootTurns.isEmpty()) return Collections.emptyList();
 
-        // Initial static ranking — used both as iterative-deepening seed and as
-        // the fallback if every deeper iteration times out.
-        List<RankedTurn> ranking = staticRank(board, rootTurns);
-        if (ranking.size() > ROOT_BEAM) ranking = ranking.subList(0, ROOT_BEAM);
+        // Static ranking of EVERY generated candidate — defense filter operates
+        // on this full pool (so candidates that rank low statically but matter
+        // defensively, e.g. king retreats, still get the safety check).
+        List<RankedTurn> fullRanking = staticRank(board, rootTurns);
 
-        // Iterative deepening: try depths 2, 3, ..., maxDepth — keep last completed.
+        // Negamax pool: top ROOT_BEAM by static. Iterative deepening refines scores.
+        List<RankedTurn> negamaxRanking = fullRanking.size() > ROOT_BEAM
+                ? new ArrayList<RankedTurn>(fullRanking.subList(0, ROOT_BEAM))
+                : new ArrayList<RankedTurn>(fullRanking);
+
         for (int d = 2; d <= maxDepth; d++) {
             if (System.currentTimeMillis() >= deadline) break;
-            List<RankedTurn> deeper = scoreRoot(board, ranking, d, deadline);
-            if (deeper == null) break; // mid-iteration timeout — keep previous ranking
-            ranking = deeper;
+            List<RankedTurn> deeper = scoreRoot(board, negamaxRanking, d, deadline);
+            if (deeper == null) break;
+            negamaxRanking = deeper;
         }
-        return pickFromRanking(ranking);
+
+        // Merge negamax-refined scores back into the full pool.
+        Map<List<ChessBallStep>, Integer> ngmScore = new HashMap<List<ChessBallStep>, Integer>();
+        for (RankedTurn rt : negamaxRanking) ngmScore.put(rt.turn, rt.score);
+        List<RankedTurn> merged = new ArrayList<RankedTurn>(fullRanking.size());
+        for (RankedTurn rt : fullRanking) {
+            Integer ngm = ngmScore.get(rt.turn);
+            merged.add(ngm != null ? new RankedTurn(rt.turn, ngm) : rt);
+        }
+        sortDesc(merged);
+
+        merged = applyDefensePenalty(board, merged);
+        return pickFromRanking(board, merged);
     }
+
+    /**
+     * For each top candidate, ask "can the opponent score (or capture our king) in
+     * their next turn?" — if yes, subtract {@link Evaluator#GOAL} from the candidate's
+     * score. After re-sorting, safe candidates rank above unsafe ones, so every
+     * difficulty (even Easy's probabilistic pick) prefers safe moves.
+     *
+     * <p>Subclasses tune via {@link #defenseCheckMs()} and {@link #defenseMaxChecked()}.
+     */
+    protected List<RankedTurn> applyDefensePenalty(ChessBallFigure[][] board, List<RankedTurn> ranking) {
+        int n = Math.min(defenseMaxChecked(), ranking.size());
+        if (n <= 0) return ranking;
+        List<RankedTurn> out = new ArrayList<RankedTurn>(ranking);
+        long perCheckMs = defenseCheckMs();
+        long totalDeadline = System.currentTimeMillis() + 10_000L;
+
+        // BASELINE: total MATERIAL of our valuable pieces the opponent can capture
+        // with the board AS IT IS NOW (before our move). A candidate that doesn't
+        // increase this baseline doesn't deserve a hang penalty — that hang already
+        // existed and isn't this move's fault. Material-weighted so hanging the
+        // queen (10 000) hurts more than hanging a knight (4 000).
+        int hangBefore = TurnGenerator.sumHangingValuableMaterial(board, false);
+
+        Gdx.app.log("AI-Defense",
+                getName() + ": " + ranking.size() + " candidates, baseline hang material = "
+                + hangBefore + " (perCheckMs " + perCheckMs + ", 10 s wall cap)");
+
+        int checkedCount = 0;
+        int unsafeCount = 0;
+        int newHangCount = 0;
+        int fixedHangCount = 0;
+        for (int i = 0; i < n; i++) {
+            if (System.currentTimeMillis() >= totalDeadline) {
+                Gdx.app.log("AI-Defense", "  ...total budget exhausted after " + checkedCount + " checks");
+                break;
+            }
+            RankedTurn rt = out.get(i);
+            ChessBallFigure[][] after = TurnGenerator.applyTurn(board, rt.turn);
+
+            boolean unsafe = TurnGenerator.canScoreInOneTurn(after, false, perCheckMs);
+            int hangAfter = TurnGenerator.sumHangingValuableMaterial(after, false);
+            int hangDelta = hangAfter - hangBefore;
+            checkedCount++;
+            if (unsafe) unsafeCount++;
+            if (hangDelta > 0) newHangCount++;
+            else if (hangDelta < 0) fixedHangCount++;
+
+            int newScore = rt.score;
+            if (unsafe) {
+                newScore = Math.min(newScore, -Evaluator.GOAL);
+            }
+            // Subtract the material delta directly: hanging a queen costs 10 000.
+            newScore -= hangDelta;
+            if (newScore != rt.score) {
+                out.set(i, new RankedTurn(rt.turn, newScore));
+            }
+        }
+        sortDesc(out);
+        Gdx.app.log("AI-Defense",
+                getName() + ": " + checkedCount + " checked, " + unsafeCount + " unsafe, "
+                + newHangCount + " creates-new-hang, " + fixedHangCount + " fixes-hang. Picked "
+                + describeTurn(out.get(0).turn) + " (final score " + out.get(0).score + ")");
+        return out;
+    }
+
+    private static String describeTurn(List<ChessBallStep> turn) {
+        if (turn == null || turn.isEmpty()) return "<empty>";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < turn.size(); i++) {
+            ChessBallStep s = turn.get(i);
+            if (i > 0) sb.append(' ');
+            sb.append('(').append(s.getFigureX()).append(',').append(s.getFigureY()).append(")->(")
+              .append(s.getStepFigureX()).append(',').append(s.getStepFigureY()).append(')');
+        }
+        return sb.toString();
+    }
+
+    /** Per-candidate budget for the defense check. Override per difficulty. */
+    protected long defenseCheckMs()    { return 80L; }
+
+    /** Number of top candidates to defense-check. Override per difficulty. */
+    protected int  defenseMaxChecked() { return 8; }
 
     /** Score every root turn at full {@code depth}. Returns null on mid-iteration timeout. */
     private List<RankedTurn> scoreRoot(ChessBallFigure[][] board, List<RankedTurn> ordered,
@@ -153,8 +255,10 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         });
     }
 
-    /** Difficulty hook: choose a turn from the final ranking (descending sorted). */
-    protected abstract List<ChessBallStep> pickFromRanking(List<RankedTurn> ranking);
+    /** Difficulty hook: choose a turn from the final ranking (descending sorted).
+     *  {@code board} is the position before the AI's move so subclasses can run
+     *  additional checks (e.g. opponent-scoring lookahead) per candidate. */
+    protected abstract List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking);
 
     /** True if rank[0] is decisively better than rank[1] — forces a mistake-free pick. */
     protected static boolean isCritical(List<RankedTurn> ranking) {

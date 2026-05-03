@@ -1,6 +1,7 @@
 package com.apogames.chessball.game;
 
 import com.apogames.chessball.Constants;
+import com.apogames.chessball.ai.ChessBallStep;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.enums.ChessBallFigure;
@@ -25,7 +26,21 @@ public class ChessBallBoard {
     private int passesLeft = Constants.MAX_PASSES;
     private int playersMove = Constants.MAX_MOVES;
 
+    // Per-match statistics (reset only on full new game).
+    private int passesWhite = 0;
+    private int passesBlack = 0;
+    private int movesWhite = 0;
+    private int movesBlack = 0;
+    private int capturedByWhite = 0;
+    private int capturedByBlack = 0;
+
     private GridPoint2 mouseOver = new GridPoint2(-1, -1);
+
+    /** The last move applied via {@link #checkToSetFigure(int, int, GridPoint2)} —
+     *  read by {@code ChessBallGame} for demo recording. {@code null} if last call
+     *  didn't apply a move. */
+    private ChessBallStep lastStep;
+    private ChessBallFigure lastStepFigure;
 
     public ChessBallBoard() {
         this.reset();
@@ -198,9 +213,44 @@ public class ChessBallBoard {
             currentColor = ChessBallColor.WHITE;
             scoreWhite = 0;
             scoreBlack = 0;
+            passesWhite = 0;
+            passesBlack = 0;
+            movesWhite = 0;
+            movesBlack = 0;
+            capturedByWhite = 0;
+            capturedByBlack = 0;
         }
         passesLeft = Constants.MAX_PASSES;
         playersMove = Constants.MAX_MOVES;
+    }
+
+    public int getPassesWhite()     { return passesWhite; }
+    public int getPassesBlack()     { return passesBlack; }
+    public int getMovesWhite()      { return movesWhite; }
+    public int getMovesBlack()      { return movesBlack; }
+    public int getCapturedByWhite() { return capturedByWhite; }
+    public int getCapturedByBlack() { return capturedByBlack; }
+
+    /**
+     * Record a player action for statistics. Call this BEFORE applying the move on
+     * the board (so {@code captured} can still be read at the destination square).
+     *
+     * @param mover    the figure being moved (BALL = ball pass; otherwise a piece)
+     * @param captured what stood at the destination before the move (EMPTY for none)
+     */
+    public void recordAction(ChessBallFigure mover, ChessBallFigure captured) {
+        if (mover == null || mover == ChessBallFigure.EMPTY) return;
+        boolean whiteSide = (mover == ChessBallFigure.BALL)
+                ? this.currentColor == ChessBallColor.WHITE
+                : mover.isWhite();
+        if (mover == ChessBallFigure.BALL) {
+            if (whiteSide) passesWhite++; else passesBlack++;
+        } else {
+            if (whiteSide) movesWhite++; else movesBlack++;
+        }
+        if (captured != null && captured != ChessBallFigure.EMPTY && captured != ChessBallFigure.BALL) {
+            if (whiteSide) capturedByWhite++; else capturedByBlack++;
+        }
     }
 
     public GridPoint2 getMouseOver() {
@@ -435,13 +485,22 @@ public class ChessBallBoard {
         }
     }
 
+    public ChessBallStep getLastStep()             { return lastStep; }
+    public ChessBallFigure getLastStepFigure()     { return lastStepFigure; }
+
     public void checkToSetFigure(int x, int y, GridPoint2 figurePosition) {
+        this.lastStep = null;
+        this.lastStepFigure = null;
         GridPoint2 currentPosition = getPointForPosition(x, y);
         if (currentPosition == null) {
             return;
         }
         if (this.circles[currentPosition.x][currentPosition.y] != ChessBallFigure.EMPTY) {
             ChessBallFigure figure = this.board[figurePosition.x][figurePosition.y];
+            ChessBallFigure captured = this.board[currentPosition.x][currentPosition.y];
+            recordAction(figure, captured);
+            this.lastStep = new ChessBallStep(figurePosition.x, figurePosition.y, currentPosition.x, currentPosition.y);
+            this.lastStepFigure = figure;
             this.board[currentPosition.x][currentPosition.y] = figure;
             this.board[figurePosition.x][figurePosition.y] = ChessBallFigure.EMPTY;
             if (figure == ChessBallFigure.BALL) {
@@ -499,6 +558,16 @@ public class ChessBallBoard {
                 }
                 if (board[x][y] != ChessBallFigure.EMPTY) {
                     mainPanel.spriteBatch.draw(AssetLoader.figures[board[x][y].getImageValue()], ADD_X + (x + movement[x][y].x) * 50f, ADD_Y + (y + movement[x][y].y) * 50f);
+                }
+            }
+        }
+        if (Constants.SHOW_COORDS) {
+            for (int x = 0; x < this.board.length; x++) {
+                for (int y = 0; y < this.board[0].length; y++) {
+                    mainPanel.drawString(x + "," + y,
+                            ADD_X + x * 50 + 5, ADD_Y + y * 50 + 12,
+                            Constants.COLOR_WHITE, AssetLoader.font15,
+                            com.apogames.chessball.backend.DrawString.BEGIN);
                 }
             }
         }

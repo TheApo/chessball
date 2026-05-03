@@ -30,6 +30,36 @@ public class IOOnlineLibgdx {
         return "";
     }
 
+    /**
+     * Upload a complete-match demo string to {@link Constants#DEMO_SAVEPHP}. Fire-and-forget
+     * — failures are logged but never block the game (called at game-over).
+     */
+    public void saveDemo(final String solution) {
+        if (solution == null || solution.isEmpty()) return;
+        try {
+            HttpRequest req = new HttpRequestBuilder().newRequest()
+                    .method(HttpMethods.POST)
+                    .url(Constants.DEMO_SAVEPHP)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .content("solution=" + java.net.URLEncoder.encode(solution, "UTF-8"))
+                    .build();
+
+            Gdx.net.sendHttpRequest(req, new HttpResponseListener() {
+                @Override public void handleHttpResponse(HttpResponse r) {
+                    Gdx.app.log("DemoSave", "OK: " + r.getResultAsString());
+                }
+                @Override public void failed(Throwable t) {
+                    Gdx.app.log("DemoSave", "fail: " + t.getMessage());
+                }
+                @Override public void cancelled() {
+                    Gdx.app.log("DemoSave", "cancelled");
+                }
+            });
+        } catch (Exception ex) {
+            Gdx.app.log("DemoSave", "error: " + ex.getMessage());
+        }
+    }
+
     public boolean load() {
         try {
             HttpRequestBuilder requestBuilder = new HttpRequestBuilder();

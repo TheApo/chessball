@@ -44,36 +44,27 @@ public class MainPanel extends GameScreen {
 
     public MainPanel(final IClassLoader classLoader, final IAIUpdate aiUpdate) {
         super();
-        if ((this.getButtons() == null) || (this.getButtons().isEmpty())) {
-            ButtonProvider button = new ButtonProvider(this);
-            button.init();
-        }
-
         if (this.online == null) {
             this.online = new IOOnlineLibgdx();
         }
-        if (this.game == null) {
-            this.game = new ChessBallGame(this);
-        }
-        if (this.menu == null) {
-            this.menu = new ChessBallMenu(this);
-        }
-        if (this.tutorial == null) {
-            this.tutorial = new ChessBallTutorial(this);
-        }
-        if (this.puzzle == null) {
-            this.puzzle = new ChessBallPuzzle(this);
-        }
 
+        // Constants.setLanguage is already called from its static block via
+        // Locale.getDefault().getLanguage() — OS / browser / device locale wins.
         this.gameProperties = new ChessBallProperties(this);
-
         this.loadProperties();
+
+        if (this.game == null)     this.game = new ChessBallGame(this);
+        if (this.menu == null)     this.menu = new ChessBallMenu(this);
+        if (this.tutorial == null) this.tutorial = new ChessBallTutorial(this);
+        if (this.puzzle == null)   this.puzzle = new ChessBallPuzzle(this);
+
+        if ((this.getButtons() == null) || (this.getButtons().isEmpty())) {
+            new ButtonProvider(this).init();
+        }
 
         if (this.ais == null) {
             this.ais = new ArrayList<>();
-
             this.resetAIs();
-
             this.playerWhite = this.ais.get(0);
             this.playerBlack = this.ais.get(1);
         }

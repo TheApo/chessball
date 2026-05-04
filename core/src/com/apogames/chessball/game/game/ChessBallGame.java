@@ -6,6 +6,7 @@ import com.apogames.chessball.ai.You;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.backend.Game;
+import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
@@ -603,8 +604,11 @@ public class ChessBallGame extends ChessBallModel {
         // --- Text contents (SpriteBatch) ---
         boolean youWon = computeYouWon();
         boolean whiteWon = this.chessBallWinState == ChessBallWinState.WHITE_WIN;
-        String title = youWon ? Constants.STRING_DIALOG_CONGRATS : Constants.STRING_DIALOG_TOO_BAD;
-        String winnerSide = whiteWon ? Constants.STRING_DIALOG_WHITE : Constants.STRING_DIALOG_BLACK;
+        com.badlogic.gdx.utils.I18NBundle i18n = Localization.getInstance().getCommon();
+        String title = i18n.get(youWon ? "dialog.congrats" : "dialog.too_bad");
+        String white = i18n.get("dialog.white");
+        String black = i18n.get("dialog.black");
+        String winnerSide = whiteWon ? white : black;
         String winnerName = whiteWon ? mp.getPlayerWhite().getName() : mp.getPlayerBlack().getName();
 
         int centerX = DIALOG_X + DIALOG_W / 2;
@@ -612,7 +616,7 @@ public class ChessBallGame extends ChessBallModel {
         mp.spriteBatch.begin();
         mp.drawString(title, centerX, DIALOG_Y + 30,
                 Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE);
-        mp.drawString(Constants.STRING_DIALOG_WINNER + ": " + winnerSide + " (" + winnerName + ")",
+        mp.drawString(i18n.get("dialog.winner") + ": " + winnerSide + " (" + winnerName + ")",
                 centerX, DIALOG_Y + 70,
                 Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
 
@@ -621,26 +625,26 @@ public class ChessBallGame extends ChessBallModel {
         int colBlackX = DIALOG_X + 350;
         int rowY = DIALOG_Y + 120;
 
-        mp.drawString(Constants.STRING_DIALOG_WHITE, colWhiteX, rowY,
+        mp.drawString(white, colWhiteX, rowY,
                 Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
-        mp.drawString(Constants.STRING_DIALOG_BLACK, colBlackX, rowY,
+        mp.drawString(black, colBlackX, rowY,
                 Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
 
         rowY += 40;
-        drawStatRow(Constants.STRING_DIALOG_PASSES,
+        drawStatRow(i18n.get("dialog.passes"),
                 this.getBoard().getPassesWhite(), this.getBoard().getPassesBlack(),
                 colWhiteX, colBlackX, rowY);
         rowY += 35;
-        drawStatRow(Constants.STRING_DIALOG_MOVES,
+        drawStatRow(i18n.get("dialog.moves"),
                 this.getBoard().getMovesWhite(), this.getBoard().getMovesBlack(),
                 colWhiteX, colBlackX, rowY);
         rowY += 35;
-        drawStatRow(Constants.STRING_DIALOG_CAPTURED,
+        drawStatRow(i18n.get("dialog.captured"),
                 this.getBoard().getCapturedByWhite(), this.getBoard().getCapturedByBlack(),
                 colWhiteX, colBlackX, rowY);
         rowY += 35;
         // "Lost" = pieces of mine captured by the opponent.
-        drawStatRow(Constants.STRING_DIALOG_LOST,
+        drawStatRow(i18n.get("dialog.lost"),
                 this.getBoard().getCapturedByBlack(), this.getBoard().getCapturedByWhite(),
                 colWhiteX, colBlackX, rowY);
         mp.spriteBatch.end();

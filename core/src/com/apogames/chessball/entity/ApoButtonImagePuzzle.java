@@ -28,12 +28,15 @@ public class ApoButtonImagePuzzle extends ApoButton {
 			screen.spriteBatch.enableBlending();
 			renderImage(screen, changeX, changeY);
 
-			renderLevelNumber(screen, changeX, changeY);
+			// Solved-state star sits between bg and number so the level number stays
+			// readable on top of it. Drawn at the button's full extent so it scales
+			// with whatever size the button actually is, not the texture's native 60x40.
 			if (this.isSolved()) {
 				screen.spriteBatch.draw(AssetLoader.puzzle[2],
-						this.getX() + changeX + this.getWidth()/2f - DIGIT_WIDTH/2f,
-						this.getY() + changeY);
+						this.getX() + changeX, this.getY() + changeY,
+						this.getWidth(), this.getHeight());
 			}
+			renderLevelNumber(screen, changeX, changeY);
 			screen.spriteBatch.end();
 
 			renderOutline(screen, changeX, changeY);

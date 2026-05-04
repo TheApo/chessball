@@ -2,15 +2,21 @@ package com.apogames.chessball.game.puzzle;
 
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
+import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.backend.io.IOOnlineLibgdx;
+import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
+import com.apogames.chessball.solver.PuzzleSolver;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.enums.ChessBallFigure;
 import com.apogames.chessball.game.enums.ChessBallWinState;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.GridPoint2;
 
 import java.util.List;
@@ -20,6 +26,12 @@ public class ChessBallPuzzle extends ChessBallModel {
     public static final String FUNCTION_MENU = "puzzle_menu";
     public static final String FUNCTION_RANDOM = "puzzle_random";
     public static final String FUNCTION_LEVEL = "puzzle_level_";
+
+    // Start-dialog geometry (mirrors ChessBallGame.renderWinDialog style).
+    private static final int DIALOG_X = 40;
+    private static final int DIALOG_Y = 270;
+    private static final int DIALOG_W = 400;
+    private static final int DIALOG_H = 230;
 
     private boolean[] keys = new boolean[256];
 
@@ -35,12 +47,27 @@ public class ChessBallPuzzle extends ChessBallModel {
     private int level = 0;
 
     private boolean isMenu = true;
+    /** Briefing shown after picking a level; one click anywhere dismisses it and play starts. */
+    private boolean showStartDialog = false;
+    /** True when the active level was loaded from a server demo (no level number, no solved tracking). */
+    private boolean isRandomLevel = false;
+    /** Snapshot of the current random level in 137-char format, captured after loadFromDemo
+     *  builds the board. Lets restart() (after fail) reload the same random level instead of
+     *  falling back to LEVELS[this.level]. */
+    private String randomLevelString = null;
+    /** Bound on rejected demos before we give up and drop to a local level — guards
+     *  against the server returning a long run of unsolvable goal-segments. */
+    private static final int RANDOM_RETRY_LIMIT = 20;
+    private int randomRetryCount = 0;
 
     private volatile ChessBallDemo pendingDemo;
     private volatile String pendingError;
 
     public ChessBallPuzzle(MainPanel mainPanel) {
         super(mainPanel);
+        // Lets inherited isLevelSolved(i) compare against this list — must be set before
+        // setNeededButtonsVisible runs (which is called by MainPanel.changeModel BEFORE init).
+        this.levels = ChessBallLevels.LEVELS;
     }
 
     @Override
@@ -49,6 +76,9 @@ public class ChessBallPuzzle extends ChessBallModel {
 
         this.level = 0;
         this.isMenu = true;
+        this.showStartDialog = false;
+        this.isRandomLevel = false;
+        this.randomLevelString = null;
         restart();
 
         setMyMenu();
@@ -71,8 +101,12 @@ public class ChessBallPuzzle extends ChessBallModel {
         }
         getButtonByFunction(FUNCTION_MENU).setVisible(true);
         getButtonByFunction(FUNCTION_RANDOM).setVisible(true);
+        // Level buttons live in MainPanel.getButtons() (not modelButtons), so the inherited
+        // setMenuButtonVisible loop doesn't reach them — set visibility + solved state here.
         for (int i = 0; i < ChessBallLevels.LEVELS.length; i++) {
-            getButtonByFunction(FUNCTION_LEVEL+i).setVisible(true);
+            ApoButton btn = getButtonByFunction(FUNCTION_LEVEL+i);
+            btn.setVisible(true);
+            btn.setSolved(isLevelSolved(i));
         }
     }
 
@@ -85,7 +119,10 @@ public class ChessBallPuzzle extends ChessBallModel {
             requestRandomDemo();
         } else if (function.startsWith(FUNCTION_LEVEL)) {
             this.level = Integer.parseInt(function.substring(FUNCTION_LEVEL.length()));
+            this.isRandomLevel = false;
+            this.randomLevelString = null;
             startLevel();
+            this.showStartDialog = true;
         }
     }
 
@@ -116,12 +153,13 @@ public class ChessBallPuzzle extends ChessBallModel {
      * goals; after each goal the real game resets to the start formation. We pick one
      * random goal-segment, reset the board, and only replay the turns of THAT segment
      * (from the previous goal +1 up to the picked goal turn, exclusive). The picked
-     * goal turn itself is what the player solves.
+     * goal turn itself is what the player solves. Random levels show the briefing too
+     * (with a different title), but are never tracked as solved.
      */
     private void loadFromDemo(ChessBallDemo demo) {
         List<Integer> goals = demo.getGoalTurnIndices();
         if (goals.isEmpty()) {
-            fallbackToLocalLevel("demo has no goals");
+            rejectAndRetryDemo("demo has no goals");
             return;
         }
         int pickIndex = (int) (Math.random() * goals.size());
@@ -138,7 +176,7 @@ public class ChessBallPuzzle extends ChessBallModel {
         }
 
         if (!this.getBoard().hasBall()) {
-            fallbackToLocalLevel("ball missing after replay (demo malformed)");
+            rejectAndRetryDemo("ball missing after replay (demo malformed)");
             return;
         }
 
@@ -147,6 +185,23 @@ public class ChessBallPuzzle extends ChessBallModel {
         List<ChessBallAIMove> goalTurn = demo.getTurn(pickedTurn);
         int goalY = goalTurn.get(goalTurn.size() - 1).getDestinationY();
         this.getBoard().setCurrentColor(goalY == 0 ? ChessBallColor.BLACK : ChessBallColor.WHITE);
+
+        // Validate solvability BEFORE committing UI changes. A demo is a full match —
+        // the picked goal-turn can require more than 1+3 if the original game took
+        // multiple turns to set up. Reject and ask for another (bounded retry).
+        String snapshot = snapshotBoardAsLevelString();
+        List<PuzzleSolver.Step> solution = PuzzleSolver.solveLevel(snapshot);
+        if (solution == null) {
+            rejectAndRetryDemo("not solvable in 1+3");
+            return;
+        }
+        randomRetryCount = 0;
+        Gdx.app.log("ChessBallPuzzle",
+                "Random level solution:\n" + PuzzleSolver.formatPath(solution));
+
+        this.isRandomLevel = true;
+        this.showStartDialog = true;
+        this.randomLevelString = snapshot;
 
         this.isMenu = false;
         for (int i = 0; i < ChessBallLevels.LEVELS.length; i++) {
@@ -159,16 +214,52 @@ public class ChessBallPuzzle extends ChessBallModel {
         this.getBoard().deleteCircle();
     }
 
+    /** Common rejection path: log the reason, increment the retry counter, fetch another
+     *  demo. After {@link #RANDOM_RETRY_LIMIT} consecutive rejections, drop to a local
+     *  level so the user isn't stuck waiting on an endless network loop. */
+    private void rejectAndRetryDemo(String reason) {
+        randomRetryCount++;
+        Gdx.app.log("ChessBallPuzzle",
+                "demo rejected (" + reason + "), retry " + randomRetryCount);
+        if (randomRetryCount >= RANDOM_RETRY_LIMIT) {
+            randomRetryCount = 0;
+            fallbackToLocalLevel("too many rejected demos: " + reason);
+            return;
+        }
+        requestRandomDemo();
+    }
+
+    /** Serialize the current board to a level-string in the same 137-char format
+     *  as {@link ChessBallLevels#LEVELS} (135 cells then turn digit). */
+    private String snapshotBoardAsLevelString() {
+        ChessBallFigure[][] cells = this.getBoard().getBoard();
+        int width = cells.length;
+        int height = cells[0].length;
+        char[] chars = new char[width * height];
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                String code = cells[x][y].getPuzzleLevel();
+                chars[y * width + x] = code.isEmpty() ? '0' : code.charAt(0);
+            }
+        }
+        char turn = this.getBoard().getCurrentColor() == ChessBallColor.WHITE ? '0' : '1';
+        return new String(chars) + turn;
+    }
+
     private void fallbackToLocalLevel(String reason) {
         com.badlogic.gdx.Gdx.app.log("ChessBallPuzzle", "demo fallback: " + reason);
         this.level = (int) (Math.random() * ChessBallLevels.LEVELS.length);
+        this.isRandomLevel = false;
+        this.randomLevelString = null;
         startLevel();
+        this.showStartDialog = true;
     }
 
     @Override
     protected void quit() {
         if (!this.isMenu) {
             this.isMenu = true;
+            this.showStartDialog = false;
             setNeededButtonsVisible();
         } else {
             this.getMainPanel().changeToMenu();
@@ -180,6 +271,11 @@ public class ChessBallPuzzle extends ChessBallModel {
         super.mouseButtonReleased(x, y, isRightButton);
 
         if (this.isMenu) {
+            return;
+        }
+
+        if (this.showStartDialog) {
+            this.showStartDialog = false;
             return;
         }
 
@@ -237,7 +333,7 @@ public class ChessBallPuzzle extends ChessBallModel {
     public void mouseDragged(int x, int y, boolean isRightButton) {
         super.mouseDragged(x, y, isRightButton);
 
-        if (this.isMenu) {
+        if (this.isMenu || this.showStartDialog) {
             return;
         }
 
@@ -253,7 +349,7 @@ public class ChessBallPuzzle extends ChessBallModel {
     public void mousePressed(int x, int y, boolean isRightButton) {
         super.mousePressed(x, y, isRightButton);
 
-        if (this.isMenu) {
+        if (this.isMenu || this.showStartDialog) {
             return;
         }
 
@@ -274,7 +370,7 @@ public class ChessBallPuzzle extends ChessBallModel {
     public void mouseMoved(int x, int y) {
         super.mouseMoved(x, y);
 
-        if (this.isMenu) {
+        if (this.isMenu || this.showStartDialog) {
             return;
         }
 
@@ -349,11 +445,26 @@ public class ChessBallPuzzle extends ChessBallModel {
     }
 
     private void nextLevel() {
+        // After solving a random level, fetch a fresh random demo instead of advancing
+        // the local level index (this.level was never set for random and would point
+        // at a stale or unrelated stored level).
+        if (this.isRandomLevel) {
+            requestRandomDemo();
+            return;
+        }
         this.level += 1;
         this.restart();
+        // Auto-advanced level still gets a briefing — same UX as picking from the grid.
+        this.showStartDialog = true;
     }
 
     private void setPositionForStep() {
+        // Random levels were built by demo replay — replay isn't deterministic across the
+        // network, so we use the snapshot taken right after loadFromDemo finished.
+        if (this.isRandomLevel && this.randomLevelString != null) {
+            applyLevelString(this.randomLevelString);
+            return;
+        }
         if (this.level == ChessBallLevels.LEVELS.length) {
             this.level = 0;
         } else if (this.level < 0) {
@@ -406,6 +517,7 @@ public class ChessBallPuzzle extends ChessBallModel {
             if (this.time <= 0 && this.imageTextIndex <= 17) {
                 this.winCheck(this.chessBallWinState);
                 if (this.isWon()) {
+                    persistSolvedIfTrackable();
                     this.nextLevel();
                 }
             }
@@ -416,13 +528,70 @@ public class ChessBallPuzzle extends ChessBallModel {
         return this.getBoard().getScoreWhite() > 0 || this.getBoard().getScoreBlack() > 0;
     }
 
+    private void persistSolvedIfTrackable() {
+        if (this.isRandomLevel) return;
+        if (this.level < 0 || this.level >= ChessBallLevels.LEVELS.length) return;
+        addSolvedLevel(ChessBallLevels.LEVELS[this.level]);
+    }
+
     @Override
     public void render() {
         renderMenu();
 
+        if (this.showStartDialog) {
+            renderStartDialog();
+        }
+
         for (ApoButton button : this.getMainPanel().getButtons()) {
             button.render(this.getMainPanel(), 0, 0);
         }
+    }
+
+    /**
+     * Briefing shown after the player picked a level: which level, which color is
+     * to move, the one-move solve rule, and a "click anywhere to start" hint.
+     * Visual style matches {@code ChessBallGame.renderWinDialog} (green panel + dark border).
+     */
+    private void renderStartDialog() {
+        MainPanel mp = this.getMainPanel();
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        mp.getRenderer().begin(ShapeType.Filled);
+        mp.getRenderer().setColor(0.05f, 0.40f, 0.05f, 0.88f);
+        mp.getRenderer().roundedRect(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
+        mp.getRenderer().end();
+
+        Gdx.gl20.glLineWidth(3f);
+        mp.getRenderer().begin(ShapeType.Line);
+        mp.getRenderer().setColor(0.02f, 0.20f, 0.02f, 1f);
+        mp.getRenderer().roundedRectLine(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
+        mp.getRenderer().end();
+        Gdx.gl20.glLineWidth(1f);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        com.badlogic.gdx.utils.I18NBundle i18n = Localization.getInstance().getCommon();
+        boolean white = this.getBoard().getCurrentColor() == ChessBallColor.WHITE;
+        String title = this.isRandomLevel
+                ? i18n.get("puzzle.start.title.random")
+                : i18n.format("puzzle.start.title", this.level + 1);
+        String color = i18n.get(white ? "puzzle.start.color.white" : "puzzle.start.color.black");
+        String rule = i18n.get("puzzle.start.rule");
+        String press = i18n.get("puzzle.start.press");
+
+        int centerX = DIALOG_X + DIALOG_W / 2;
+
+        mp.spriteBatch.begin();
+        mp.drawString(title, centerX, DIALOG_Y + 30,
+                Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE);
+        mp.drawString(color, centerX, DIALOG_Y + 90,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        mp.drawString(rule, centerX, DIALOG_Y + 130,
+                Constants.COLOR_WHITE, AssetLoader.font15, DrawString.MIDDLE);
+        mp.drawString(press, centerX, DIALOG_Y + DIALOG_H - 40,
+                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        mp.spriteBatch.end();
     }
 
     @Override

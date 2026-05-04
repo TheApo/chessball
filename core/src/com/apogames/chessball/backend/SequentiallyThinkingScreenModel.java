@@ -228,7 +228,6 @@ public abstract class SequentiallyThinkingScreenModel extends ScreenModel {
     }
 
     public void mousePressed(int x, int y, boolean isRightButton) {
-        System.out.println("RELEASED");
         super.mousePressed(x, y, isRightButton);
         for (int i = 0; i < this.modelButtons.size(); i++) {
             if (this.modelButtons.get(i).getPressed(x, y)) {
@@ -238,7 +237,6 @@ public abstract class SequentiallyThinkingScreenModel extends ScreenModel {
     }
 
     public void mouseButtonReleased(int x, int y, boolean isRightButton) {
-        System.out.println("RELEASED");
         super.mouseButtonReleased(x, y, isRightButton);
         for (ApoButton modelButton : this.modelButtons) {
             if (modelButton.getReleased(x, y)) {

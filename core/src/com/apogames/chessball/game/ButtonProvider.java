@@ -20,8 +20,8 @@
 
 package com.apogames.chessball.game;
 
-import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
+import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.entity.ApoButtonChessball;
 import com.apogames.chessball.entity.ApoButtonImage;
@@ -82,9 +82,9 @@ public class ButtonProvider {
 		// End-of-game dialog buttons — hidden by default, toggled in ChessBallGame.applyDialogVisibility().
 		// Use puzzle level button background (chessball_buttons_puzzle.png frame 0), scaled to fit text.
 		addDialogImageButton(ChessBallGame.FUNCTION_NEXT,  70, 540, 140, 50,
-				AssetLoader.puzzle[0], Constants.STRING_DIALOG_NEXT);
+				AssetLoader.puzzle[0], Localization.getInstance().getCommon().get("dialog.next"));
 		addDialogImageButton(ChessBallGame.FUNCTION_BACK, 270, 540, 140, 50,
-				AssetLoader.puzzle[0], Constants.STRING_DIALOG_BACK);
+				AssetLoader.puzzle[0], Localization.getInstance().getCommon().get("dialog.back"));
 
 		addBarImageButton(ChessBallMenu.FUNCTION_EXIT,     BAR_RIGHT_X, AssetLoader.buttons[3]);
 		addBarImageButton(ChessBallTutorial.FUNCTION_MENU, BAR_RIGHT_X, AssetLoader.buttons[2]);

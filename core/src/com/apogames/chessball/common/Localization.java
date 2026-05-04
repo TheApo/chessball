@@ -9,8 +9,7 @@ import static com.badlogic.gdx.utils.I18NBundle.createBundle;
 
 /**
  * Holds instances of the resource bundles and manages the locale.
- *
- * @author Maik Becker {@literal <hi@maik.codes>}
+ * Default locale comes from the system; switch via {@link #setLocale(Locale)}.
  */
 public final class Localization {
     private static final Localization INSTANCE = new Localization();
@@ -19,8 +18,11 @@ public final class Localization {
     private I18NBundle common;
 
     private Localization() {
-        this.locale = Locale.US;
-        initialize();
+        try {
+            this.locale = Locale.getDefault();
+        } catch (Exception ex) {
+            this.locale = Locale.ENGLISH;
+        }
     }
 
     private void initialize() {
@@ -37,6 +39,7 @@ public final class Localization {
     }
 
     public I18NBundle getCommon() {
+        if (common == null) initialize();
         return common;
     }
 

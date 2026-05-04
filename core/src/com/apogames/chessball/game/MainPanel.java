@@ -48,15 +48,18 @@ public class MainPanel extends GameScreen {
             this.online = new IOOnlineLibgdx();
         }
 
-        // Constants.setLanguage is already called from its static block via
-        // Locale.getDefault().getLanguage() — OS / browser / device locale wins.
-        this.gameProperties = new ChessBallProperties(this);
-        this.loadProperties();
+        // Wire i18n bundle to OS / browser / device locale captured by Constants.REGION.
+        Constants.setLanguage(Constants.REGION);
 
         if (this.game == null)     this.game = new ChessBallGame(this);
         if (this.menu == null)     this.menu = new ChessBallMenu(this);
         if (this.tutorial == null) this.tutorial = new ChessBallTutorial(this);
         if (this.puzzle == null)   this.puzzle = new ChessBallPuzzle(this);
+
+        // Properties read solved levels into puzzle's list — needs puzzle constructed first.
+        this.gameProperties = new ChessBallProperties(this);
+        this.puzzle.setGameProperties(this.gameProperties);
+        this.loadProperties();
 
         if ((this.getButtons() == null) || (this.getButtons().isEmpty())) {
             new ButtonProvider(this).init();
@@ -132,6 +135,10 @@ public class MainPanel extends GameScreen {
         return online;
     }
 
+    public ChessBallPuzzle getPuzzle() {
+        return puzzle;
+    }
+
     public void loadProperties() {
     	gameProperties.readLevel();
         updateLevelChooser();
@@ -146,7 +153,6 @@ public class MainPanel extends GameScreen {
     }
 
     public void setLanguage(String language) {
-    	Constants.REGION = language;
     	Constants.setLanguage(language);
     }
 

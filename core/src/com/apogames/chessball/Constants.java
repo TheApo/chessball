@@ -1,5 +1,6 @@
 package com.apogames.chessball;
 
+import com.apogames.chessball.common.Localization;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 
 import java.util.Locale;
@@ -92,117 +93,6 @@ public class Constants {
         return result;
     }
 
-    public static final String STRING_EASY_ENG = "Game";
-    public static final String STRING_EASY_GER = "Spiel";
-    public static String STRING_EASY = STRING_EASY_GER;
-
-    public static final String STRING_TOKEN_ENG = "The token is";
-    public static final String STRING_TOKEN_GER = "Der Token lautet";
-    public static String STRING_TOKEN = STRING_TOKEN_GER;
-
-    public static final String STRING_LOVE_TEXT_ENG = "Create a path to deliver all presents";
-    public static final String STRING_LOVE_TEXT_GER = "Liefere die Geschenke an die Kinder";
-    public static String STRING_LOVE_TEXT = STRING_LOVE_TEXT_GER;
-
-    public static final String STRING_UNDO_TEXT_ENG = "Press u to undo the last step";
-    public static final String STRING_UNDO_TEXT_GER = "Druecke u, um den letzten Schritt rueckgaenig zu machen";
-    public static String STRING_UNDO_TEXT = STRING_UNDO_TEXT_GER;
-
-    public static final String[][] STRING_TUTORIAL_TEXT_ENG = {{"Move with the cursor keys or the dpad.",
-            "Press u to undo your last step.", "Press r to restart the level"},
-            {"Every rule counts.", ""},
-            {"Often I have to make the rules.", "I have the power."}};
-    public static final String[][] STRING_TUTORIAL_TEXT_GER = {{
-            "Pfeiltasten oder dpad = Bewegung",
-            "Druecke U = Letzter Schritt rueckganig",
-            "Druecke R = Level Neustart"},
-            {"Jede einzelne neue Regel zaehlt.", ""},
-            {"Haeufig muss ich die Regeln erstellen,", "um mein Ziel zu erreichen."}};
-    public static String[][] STRING_TUTORIAL_TEXT = STRING_TUTORIAL_TEXT_GER;
-
-    public static final String[] STRING_TUTORIAL_0_MOVE_TEXT_ENG = {
-            "Every level has 2 steps",
-            "In the first step create a path to the house",
-            "but aware the ice is brittle and you can't swim.",
-            "After visiting the house the water will transform",
-            "to snow. Then deliver the sliding presents to the house."};
-    public static final String[] STRING_TUTORIAL_0_MOVE_TEXT_GER = {
-            "Jedes Level besteht aus zwei Schritten: Zuerst laufe",
-            "einen Weg zum Haus, aber das Eis ist bruechig und",
-            "du kannst nicht schwimmen. Nach dem Besuch des Hauses",
-            "verwandelt sich dein Weg von Wasser zu Schnee und",
-            "du kannst die schlitternden Geschenke ins Haus bringen."};
-    public static String[] STRING_TUTORIAL_0_MOVE_TEXT = STRING_TUTORIAL_0_MOVE_TEXT_GER;
-
-    public static final String STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_ENG = "Move with the dpad";
-    public static final String STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_GER = "Bewege dich mit dem Steuerkreuz";
-    public static String STRING_TUTORIAL_0_MOVE_TEXT_SINGLE = STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_GER;
-
-    public static final String[] STRING_MENU_TEXT_ENG = {"Choose your level", "and let the adventure begin"};
-    public static final String[] STRING_MENU_TEXT_GER = {"Waehle ein Level aus", "und lass das Abenteuer beginnen"};
-    public static String[] STRING_MENU_TEXT = STRING_MENU_TEXT_GER;
-
-    public static final String[] STRING_ANALYSIS_TEXT_ENG = {"Congratulation", "Oh no ..."};
-    public static final String[] STRING_ANALYSIS_TEXT_GER = {"Herzlichen Glueckwunsch", "Oh nein ..."};
-    public static String[] STRING_ANALYSIS_TEXT = STRING_ANALYSIS_TEXT_GER;
-
-    public static final String[] STRING_ANALYSIS_NEXT_TEXT_ENG = {"Press play to start the next level", "Please try again"};
-    public static final String[] STRING_ANALYSIS_NEXT_TEXT_GER = {"Auf gehts ins naechste Level", "Bitte versuche es erneut"};
-    public static String[] STRING_ANALYSIS_NEXT_TEXT = STRING_ANALYSIS_NEXT_TEXT_GER;
-
-    public static final String STRING_OPTIONS_LANGUAGE_ENG = "Language";
-    public static final String STRING_OPTIONS_LANGUAGE_GER = "Sprache";
-    public static String STRING_OPTIONS_LANGUAGE = STRING_OPTIONS_LANGUAGE_GER;
-
-    // --- End-of-game dialog ----------------------------------------------------------
-    public static final String STRING_DIALOG_CONGRATS_ENG = "Congratulations!";
-    public static final String STRING_DIALOG_CONGRATS_GER = "Glueckwunsch!";
-    public static String STRING_DIALOG_CONGRATS = STRING_DIALOG_CONGRATS_GER;
-
-    public static final String STRING_DIALOG_TOO_BAD_ENG = "Too bad!";
-    public static final String STRING_DIALOG_TOO_BAD_GER = "Schade!";
-    public static String STRING_DIALOG_TOO_BAD = STRING_DIALOG_TOO_BAD_GER;
-
-    public static final String STRING_DIALOG_WINNER_ENG = "Winner";
-    public static final String STRING_DIALOG_WINNER_GER = "Sieger";
-    public static String STRING_DIALOG_WINNER = STRING_DIALOG_WINNER_GER;
-
-    public static final String STRING_DIALOG_NEXT_ENG = "Next";
-    public static final String STRING_DIALOG_NEXT_GER = "Weiter";
-    public static String STRING_DIALOG_NEXT = STRING_DIALOG_NEXT_GER;
-
-    public static final String STRING_DIALOG_BACK_ENG = "Back";
-    public static final String STRING_DIALOG_BACK_GER = "Zurueck";
-    public static String STRING_DIALOG_BACK = STRING_DIALOG_BACK_GER;
-
-    public static final String STRING_DIALOG_PASSES_ENG = "Passes";
-    public static final String STRING_DIALOG_PASSES_GER = "Paesse";
-    public static String STRING_DIALOG_PASSES = STRING_DIALOG_PASSES_GER;
-
-    public static final String STRING_DIALOG_MOVES_ENG = "Moves";
-    public static final String STRING_DIALOG_MOVES_GER = "Zuege";
-    public static String STRING_DIALOG_MOVES = STRING_DIALOG_MOVES_GER;
-
-    public static final String STRING_DIALOG_CAPTURED_ENG = "Captured";
-    public static final String STRING_DIALOG_CAPTURED_GER = "Geschlagen";
-    public static String STRING_DIALOG_CAPTURED = STRING_DIALOG_CAPTURED_GER;
-
-    public static final String STRING_DIALOG_LOST_ENG = "Lost";
-    public static final String STRING_DIALOG_LOST_GER = "Verloren";
-    public static String STRING_DIALOG_LOST = STRING_DIALOG_LOST_GER;
-
-    public static final String STRING_DIALOG_WHITE_ENG = "White";
-    public static final String STRING_DIALOG_WHITE_GER = "Weiss";
-    public static String STRING_DIALOG_WHITE = STRING_DIALOG_WHITE_GER;
-
-    public static final String STRING_DIALOG_BLACK_ENG = "Black";
-    public static final String STRING_DIALOG_BLACK_GER = "Schwarz";
-    public static String STRING_DIALOG_BLACK = STRING_DIALOG_BLACK_GER;
-
-    public static final String STRING_LANG_PICKER_ENG = "Choose language";
-    public static final String STRING_LANG_PICKER_GER = "Sprache waehlen";
-    public static String STRING_LANG_PICKER = STRING_LANG_PICKER_GER;
-
     static {
         REGION = "de";
         try {
@@ -210,34 +100,12 @@ public class Constants {
         } catch (Exception ex) {
             REGION = "de";
         }
-        setLanguage(REGION);
     }
 
+    /** Switches the active locale used by {@link Localization}. */
     public static void setLanguage(final String region) {
         REGION = region;
-        boolean de = (region != null) && region.equals("de");
-        STRING_LOVE_TEXT                   = de ? STRING_LOVE_TEXT_GER                   : STRING_LOVE_TEXT_ENG;
-        STRING_TUTORIAL_TEXT               = de ? STRING_TUTORIAL_TEXT_GER               : STRING_TUTORIAL_TEXT_ENG;
-        STRING_TUTORIAL_0_MOVE_TEXT        = de ? STRING_TUTORIAL_0_MOVE_TEXT_GER        : STRING_TUTORIAL_0_MOVE_TEXT_ENG;
-        STRING_MENU_TEXT                   = de ? STRING_MENU_TEXT_GER                   : STRING_MENU_TEXT_ENG;
-        STRING_ANALYSIS_TEXT               = de ? STRING_ANALYSIS_TEXT_GER               : STRING_ANALYSIS_TEXT_ENG;
-        STRING_ANALYSIS_NEXT_TEXT          = de ? STRING_ANALYSIS_NEXT_TEXT_GER          : STRING_ANALYSIS_NEXT_TEXT_ENG;
-        STRING_OPTIONS_LANGUAGE            = de ? STRING_OPTIONS_LANGUAGE_GER            : STRING_OPTIONS_LANGUAGE_ENG;
-        STRING_UNDO_TEXT                   = de ? STRING_UNDO_TEXT_GER                   : STRING_UNDO_TEXT_ENG;
-        STRING_TUTORIAL_0_MOVE_TEXT_SINGLE = de ? STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_GER : STRING_TUTORIAL_0_MOVE_TEXT_SINGLE_ENG;
-        STRING_EASY                        = de ? STRING_EASY_GER                        : STRING_EASY_ENG;
-        STRING_TOKEN                       = de ? STRING_TOKEN_GER                       : STRING_TOKEN_ENG;
-        STRING_DIALOG_CONGRATS             = de ? STRING_DIALOG_CONGRATS_GER             : STRING_DIALOG_CONGRATS_ENG;
-        STRING_DIALOG_TOO_BAD              = de ? STRING_DIALOG_TOO_BAD_GER              : STRING_DIALOG_TOO_BAD_ENG;
-        STRING_DIALOG_WINNER               = de ? STRING_DIALOG_WINNER_GER               : STRING_DIALOG_WINNER_ENG;
-        STRING_DIALOG_NEXT                 = de ? STRING_DIALOG_NEXT_GER                 : STRING_DIALOG_NEXT_ENG;
-        STRING_DIALOG_BACK                 = de ? STRING_DIALOG_BACK_GER                 : STRING_DIALOG_BACK_ENG;
-        STRING_DIALOG_PASSES               = de ? STRING_DIALOG_PASSES_GER               : STRING_DIALOG_PASSES_ENG;
-        STRING_DIALOG_MOVES                = de ? STRING_DIALOG_MOVES_GER                : STRING_DIALOG_MOVES_ENG;
-        STRING_DIALOG_CAPTURED             = de ? STRING_DIALOG_CAPTURED_GER             : STRING_DIALOG_CAPTURED_ENG;
-        STRING_DIALOG_LOST                 = de ? STRING_DIALOG_LOST_GER                 : STRING_DIALOG_LOST_ENG;
-        STRING_DIALOG_WHITE                = de ? STRING_DIALOG_WHITE_GER                : STRING_DIALOG_WHITE_ENG;
-        STRING_DIALOG_BLACK                = de ? STRING_DIALOG_BLACK_GER                : STRING_DIALOG_BLACK_ENG;
-        STRING_LANG_PICKER                 = de ? STRING_LANG_PICKER_GER                 : STRING_LANG_PICKER_ENG;
+        Locale locale = (region != null && region.equals("de")) ? Locale.GERMAN : Locale.ENGLISH;
+        Localization.getInstance().setLocale(locale);
     }
 }

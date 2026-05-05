@@ -47,10 +47,72 @@ public final class Evaluator {
     private static final int W_SHOT_AT_GOAL  = 100_000;  // per goal cell reachable in 1 pass
     private static final int W_NEAR_GOAL     = 5_000;    // per row inside last 3 rows
     private static final int W_BALL_PROGRESS = 300;      // per row of ball y advance
-    private static final int W_NEAR_BALL     = 400;      // per friendly adjacent to ball
+    private static final int W_NEAR_BALL     = 1_000;    // per friendly adjacent to ball (vs. opp adj)
+    private static final int W_BALL_REACHABLE = 500;     // per non-adj piece that can move adjacent to ball
+    private static final int BALL_REACH_CAP   = 2;       // max counted reachers per side
+    private static final int W_KING_THREAT   = 50_000;   // own king attackable by enemy in 1 chess move
     private static final int W_OPEN_LANE     = 200;      // per empty cell in ball's column ahead
 
     private Evaluator() {}
+
+    /** Same maths as {@link #evaluate(ChessBallFigure[][])} but returns a human-readable
+     *  per-term breakdown for diagnostics. Slow — only call from logging paths. */
+    public static String describeBreakdown(ChessBallFigure[][] board) {
+        int bx = -1, by = -1;
+        int materialBalance = 0;
+        boolean whiteKing = false, blackKing = false;
+        for (int x = 0; x < W; x++) {
+            for (int y = 0; y < H; y++) {
+                ChessBallFigure f = board[x][y];
+                if (f == null || f == ChessBallFigure.EMPTY) continue;
+                if (f == ChessBallFigure.BALL) { bx = x; by = y; continue; }
+                if (f == ChessBallFigure.WHITE_KING) whiteKing = true;
+                else if (f == ChessBallFigure.BLACK_KING) blackKing = true;
+                materialBalance += f.isWhite() ? MATERIAL[f.getFieldValue()] : -MATERIAL[f.getFieldValue()];
+            }
+        }
+        if (!whiteKing) return "TERMINAL: white king captured (-GOAL)";
+        if (!blackKing) return "TERMINAL: black king captured (+GOAL)";
+        if (by == OWN_GOAL_Y && bx >= 3 && bx <= 5) return "TERMINAL: white scored (+GOAL)";
+        if (by == ENEMY_GOAL_Y && bx >= 3 && bx <= 5) return "TERMINAL: black scored (-GOAL)";
+        if (bx < 0) return "material=" + materialBalance + " (no ball)";
+
+        int shotW = W_SHOT_AT_GOAL * shotPotential(board, bx, by, true);
+        int shotB = W_SHOT_AT_GOAL * shotPotential(board, bx, by, false);
+        int progress = (by - 7) * W_BALL_PROGRESS;
+        int nearGoal = 0;
+        if (by >= 12) nearGoal = W_NEAR_GOAL * (by - 11);
+        if (by <= 2)  nearGoal = -W_NEAR_GOAL * (3 - by);
+        int wAdj = 0, bAdj = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                if (dx == 0 && dy == 0) continue;
+                int x = bx + dx, y = by + dy;
+                if (x < 0 || x >= W || y < 0 || y >= H) continue;
+                ChessBallFigure f = board[x][y];
+                if (f == null || f == ChessBallFigure.EMPTY || f == ChessBallFigure.BALL) continue;
+                if (f.isWhite()) wAdj++; else bAdj++;
+            }
+        }
+        int nearBall = W_NEAR_BALL * (wAdj - bAdj);
+        int wReach = Math.min(BALL_REACH_CAP, countCanMoveAdjacentToBall(board, bx, by, true));
+        int bReach = Math.min(BALL_REACH_CAP, countCanMoveAdjacentToBall(board, bx, by, false));
+        int reach = W_BALL_REACHABLE * (wReach - bReach);
+        boolean wKingAtt = isKingAttacked(board, true);
+        boolean bKingAtt = isKingAttacked(board, false);
+        int kingThreat = (bKingAtt ? W_KING_THREAT : 0) - (wKingAtt ? W_KING_THREAT : 0);
+        int lane = W_OPEN_LANE * (openLane(board, bx, by, +1) - openLane(board, bx, by, -1));
+        int total = materialBalance + shotW - shotB + progress + nearGoal + nearBall + reach + kingThreat + lane;
+        return "material=" + materialBalance
+                + " shot(w=" + (shotW/W_SHOT_AT_GOAL) + ",b=" + (shotB/W_SHOT_AT_GOAL) + ")=" + (shotW - shotB)
+                + " progress=" + progress
+                + " nearGoal=" + nearGoal
+                + " nearBall(w=" + wAdj + ",b=" + bAdj + ")=" + nearBall
+                + " reach(w=" + wReach + ",b=" + bReach + ")=" + reach
+                + " kingThreat(wAtt=" + wKingAtt + ",bAtt=" + bKingAtt + ")=" + kingThreat
+                + " lane=" + lane
+                + " | total=" + total;
+    }
 
     public static int evaluate(ChessBallFigure[][] board) {
         int bx = -1, by = -1;
@@ -100,6 +162,22 @@ public final class Evaluator {
             }
         }
         score += W_NEAR_BALL * (wAdj - bAdj);
+
+        // Ball reach: pieces that can MOVE adjacent to the ball next turn (not already adjacent).
+        // Counts pieces that aren't yet next to the ball but could be after one chess move —
+        // captures the "ball is safe iff opponent must first move a piece to reach it" intuition.
+        int wReach = Math.min(BALL_REACH_CAP, countCanMoveAdjacentToBall(board, bx, by, true));
+        int bReach = Math.min(BALL_REACH_CAP, countCanMoveAdjacentToBall(board, bx, by, false));
+        score += W_BALL_REACHABLE * (wReach - bReach);
+
+        // King safety: any enemy piece that can chess-move onto our king's square is a 1-ply
+        // capture threat. The negamax+1-turn defense filter only sees this if the king-capture
+        // is the OPPONENT'S immediate next move. A 2-turn threat (e.g. clear blocker, then
+        // capture) is missed at depth 3, so we add a strong static penalty here so leaving the
+        // king attacked is always expensive — defending becomes the obvious choice unless a
+        // forced win is already on the board.
+        if (isKingAttacked(board, true))  score -= W_KING_THREAT;
+        if (isKingAttacked(board, false)) score += W_KING_THREAT;
 
         // Open passing lane in ball's column.
         score += W_OPEN_LANE * (openLane(board, bx, by, +1) - openLane(board, bx, by, -1));
@@ -171,6 +249,67 @@ public final class Evaluator {
             x += dx; y += dy;
         }
         return true;
+    }
+
+    /** True if any enemy piece could chess-move onto the given side's king square in
+     *  one move. Returns false if the king is already gone (the terminal branch in
+     *  evaluate() handles that). Early-exits on the first found attacker. */
+    private static boolean isKingAttacked(ChessBallFigure[][] board, boolean forWhiteKing) {
+        ChessBallFigure kingType = forWhiteKing ? ChessBallFigure.WHITE_KING : ChessBallFigure.BLACK_KING;
+        int kx = -1, ky = -1;
+        for (int x = 0; x < W && kx < 0; x++) {
+            for (int y = 0; y < H; y++) {
+                if (board[x][y] == kingType) { kx = x; ky = y; break; }
+            }
+        }
+        if (kx < 0) return false;
+        for (int x = 0; x < W; x++) {
+            for (int y = 0; y < H; y++) {
+                ChessBallFigure f = board[x][y];
+                if (f == null || f == ChessBallFigure.EMPTY || f == ChessBallFigure.BALL) continue;
+                if (f.isWhite() == forWhiteKing) continue;
+                if (canPieceReach(board, f, x, y, kx, ky)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Counts pieces of the given color that are NOT already adjacent to the ball
+     *  but could move to one of the 8 adjacent cells in one chess move. Early-exits
+     *  once {@link #BALL_REACH_CAP} matches are found (the score caps anyway). */
+    private static int countCanMoveAdjacentToBall(ChessBallFigure[][] board, int bx, int by, boolean forWhite) {
+        int count = 0;
+        for (int x = 0; x < W && count < BALL_REACH_CAP; x++) {
+            for (int y = 0; y < H && count < BALL_REACH_CAP; y++) {
+                ChessBallFigure f = board[x][y];
+                if (f == null || f == ChessBallFigure.EMPTY || f == ChessBallFigure.BALL) continue;
+                if (f.isWhite() != forWhite) continue;
+                // Already adjacent — handled by W_NEAR_BALL, don't double-count.
+                if (Math.abs(x - bx) <= 1 && Math.abs(y - by) <= 1) continue;
+                if (canMoveToAdjacentCell(board, f, x, y, bx, by)) count++;
+            }
+        }
+        return count;
+    }
+
+    /** True if {@code piece} at {@code (sx,sy)} can chess-move into any of the 8 cells
+     *  surrounding the ball — the destination must be empty or hold a capturable enemy
+     *  (not the ball itself, and not a same-color piece). */
+    private static boolean canMoveToAdjacentCell(ChessBallFigure[][] board, ChessBallFigure piece,
+                                                  int sx, int sy, int bx, int by) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                if (dx == 0 && dy == 0) continue;
+                int gx = bx + dx, gy = by + dy;
+                if (gx < 0 || gx >= W || gy < 0 || gy >= H) continue;
+                ChessBallFigure target = board[gx][gy];
+                if (target == ChessBallFigure.BALL) continue;
+                if (target != null && target != ChessBallFigure.EMPTY
+                        && target.isWhite() == piece.isWhite()) continue;
+                if (canPieceReach(board, piece, sx, sy, gx, gy)) return true;
+            }
+        }
+        return false;
     }
 
     private static int openLane(ChessBallFigure[][] b, int bx, int by, int dir) {

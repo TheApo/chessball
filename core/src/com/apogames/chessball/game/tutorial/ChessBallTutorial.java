@@ -3,6 +3,7 @@ package com.apogames.chessball.game.tutorial;
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.Game;
+import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
@@ -32,6 +33,11 @@ public class ChessBallTutorial extends ChessBallModel {
 
     public ChessBallTutorial(MainPanel mainPanel) {
         super(mainPanel);
+    }
+
+    @Override
+    protected String getTopBarTitle() {
+        return Localization.getInstance().getCommon().get("topbar.tutorial");
     }
 
     @Override
@@ -261,6 +267,9 @@ public class ChessBallTutorial extends ChessBallModel {
         this.getBoard().deleteCircle();
 
         this.setPositionForStep();
+        // HTML backend renders only on markDirty(); restart can be triggered from
+        // doThink (auto-advance after step) where input markDirty has been consumed.
+        Game.markDirty();
     }
 
     private void setPositionForStep() {
@@ -337,9 +346,12 @@ public class ChessBallTutorial extends ChessBallModel {
     }
 
     private void renderBackground() {
+        final int dy = Constants.TOP_BAR_HEIGHT;
+        renderTopBar();
+
         this.getMainPanel().spriteBatch.begin();
 
-        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, 0);
+        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, dy);
         this.getBoard().renderBoard(this.getMainPanel());
         this.getBoard().renderInformations(this.getMainPanel());
 
@@ -347,31 +359,31 @@ public class ChessBallTutorial extends ChessBallModel {
             this.getMainPanel().spriteBatch.draw(AssetLoader.text[this.imageTextIndex], 15, Constants.GAME_HEIGHT/2f - 20);
         }
         if (this.step == 0) {
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[0], 15, 120);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[1], 15, 165);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[0], 15, 120 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[1], 15, 165 + dy);
 
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[2], 15, 225);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[3], 15, 265);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[2], 15, 225 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[3], 15, 265 + dy);
 
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[4], 15, 365);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[5], 15, 405);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[6], 15, 445);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[4], 15, 365 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[5], 15, 405 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[6], 15, 445 + dy);
         } else if (this.step == 1) {
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[0], 15, 120);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[1], 15, 165);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[0], 15, 120 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[1], 15, 165 + dy);
 
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[7], 15, 225);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[8], 15, 265);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[9], 15, 305);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[7], 15, 225 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[8], 15, 265 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[9], 15, 305 + dy);
 
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[10], 15, 365);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[11], 15, 405);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[12], 15, 445);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[10], 15, 365 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[11], 15, 405 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[12], 15, 445 + dy);
         } else if (this.step == 2) {
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[13], 15, 405);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[14], 15, 445);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[13], 15, 405 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[14], 15, 445 + dy);
         } else if (this.step == 3) {
-            this.getMainPanel().spriteBatch.draw(AssetLoader.text[15], 15, 225);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.text[15], 15, 225 + dy);
         }
 
         this.getMainPanel().spriteBatch.end();

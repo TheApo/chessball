@@ -2,11 +2,11 @@ package com.apogames.chessball.game.puzzle;
 
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
-import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.backend.io.IOOnlineLibgdx;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
+import com.apogames.chessball.entity.Dialog;
 import com.apogames.chessball.solver.PuzzleSolver;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
@@ -15,9 +15,8 @@ import com.apogames.chessball.game.enums.ChessBallFigure;
 import com.apogames.chessball.game.enums.ChessBallWinState;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
-import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.GridPoint2;
+import com.badlogic.gdx.utils.I18NBundle;
 
 import java.util.List;
 
@@ -28,8 +27,9 @@ public class ChessBallPuzzle extends ChessBallModel {
     public static final String FUNCTION_LEVEL = "puzzle_level_";
 
     // Start-dialog geometry (mirrors ChessBallGame.renderWinDialog style).
+    // Y shifted by Constants.TOP_BAR_HEIGHT so the dialog sits below the in-app title bar.
     private static final int DIALOG_X = 40;
-    private static final int DIALOG_Y = 270;
+    private static final int DIALOG_Y = 270 + Constants.TOP_BAR_HEIGHT;
     private static final int DIALOG_W = 400;
     private static final int DIALOG_H = 230;
 
@@ -68,6 +68,18 @@ public class ChessBallPuzzle extends ChessBallModel {
         // Lets inherited isLevelSolved(i) compare against this list — must be set before
         // setNeededButtonsVisible runs (which is called by MainPanel.changeModel BEFORE init).
         this.levels = ChessBallLevels.LEVELS;
+    }
+
+    @Override
+    protected String getTopBarTitle() {
+        I18NBundle i18n = Localization.getInstance().getCommon();
+        if (this.isMenu) {
+            return i18n.get("topbar.puzzle.menu");
+        }
+        if (this.isRandomLevel) {
+            return i18n.get("topbar.puzzle.random");
+        }
+        return i18n.format("topbar.puzzle.level", this.level + 1);
     }
 
     @Override
@@ -212,6 +224,10 @@ public class ChessBallPuzzle extends ChessBallModel {
         this.mouseDifPosition.x = -1;
         this.figurePosition.x = -1;
         this.getBoard().deleteCircle();
+        // Random demo arrival is async (doThink, not an input event) so request
+        // a redraw — otherwise HTML stays on the stale frame and the start
+        // dialog never appears.
+        Game.markDirty();
     }
 
     /** Common rejection path: log the reason, increment the retry counter, fetch another
@@ -247,7 +263,7 @@ public class ChessBallPuzzle extends ChessBallModel {
     }
 
     private void fallbackToLocalLevel(String reason) {
-        com.badlogic.gdx.Gdx.app.log("ChessBallPuzzle", "demo fallback: " + reason);
+        Gdx.app.log("ChessBallPuzzle", "demo fallback: " + reason);
         this.level = (int) (Math.random() * ChessBallLevels.LEVELS.length);
         this.isRandomLevel = false;
         this.randomLevelString = null;
@@ -487,6 +503,10 @@ public class ChessBallPuzzle extends ChessBallModel {
             int turn = levelString.charAt(width * height) - '0';
             this.getBoard().setCurrentColor(turn == 0 ? ChessBallColor.WHITE : ChessBallColor.BLACK);
         }
+        // HTML backend skips render() unless markDirty() is called. Level loads
+        // sometimes happen async (e.g. random-demo arrival in doThink) so the
+        // input-event markDirty has already been consumed — request a redraw here.
+        Game.markDirty();
     }
 
     @Override
@@ -545,33 +565,19 @@ public class ChessBallPuzzle extends ChessBallModel {
         for (ApoButton button : this.getMainPanel().getButtons()) {
             button.render(this.getMainPanel(), 0, 0);
         }
+
+        if (!this.isMenu) {
+            renderTurnBorder();
+        }
     }
 
     /**
      * Briefing shown after the player picked a level: which level, which color is
      * to move, the one-move solve rule, and a "click anywhere to start" hint.
-     * Visual style matches {@code ChessBallGame.renderWinDialog} (green panel + dark border).
+     * Border color reflects side-to-move (white border = White's turn).
      */
     private void renderStartDialog() {
-        MainPanel mp = this.getMainPanel();
-
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-
-        mp.getRenderer().begin(ShapeType.Filled);
-        mp.getRenderer().setColor(0.05f, 0.40f, 0.05f, 0.88f);
-        mp.getRenderer().roundedRect(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
-        mp.getRenderer().end();
-
-        Gdx.gl20.glLineWidth(3f);
-        mp.getRenderer().begin(ShapeType.Line);
-        mp.getRenderer().setColor(0.02f, 0.20f, 0.02f, 1f);
-        mp.getRenderer().roundedRectLine(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
-        mp.getRenderer().end();
-        Gdx.gl20.glLineWidth(1f);
-        Gdx.gl.glDisable(GL20.GL_BLEND);
-
-        com.badlogic.gdx.utils.I18NBundle i18n = Localization.getInstance().getCommon();
+        I18NBundle i18n = Localization.getInstance().getCommon();
         boolean white = this.getBoard().getCurrentColor() == ChessBallColor.WHITE;
         String title = this.isRandomLevel
                 ? i18n.get("puzzle.start.title.random")
@@ -580,18 +586,17 @@ public class ChessBallPuzzle extends ChessBallModel {
         String rule = i18n.get("puzzle.start.rule");
         String press = i18n.get("puzzle.start.press");
 
-        int centerX = DIALOG_X + DIALOG_W / 2;
+        float[] panel = new float[]{Constants.COLOR_CLEAR[0], Constants.COLOR_CLEAR[1],
+                Constants.COLOR_CLEAR[2], 0.88f};
 
-        mp.spriteBatch.begin();
-        mp.drawString(title, centerX, DIALOG_Y + 30,
-                Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE);
-        mp.drawString(color, centerX, DIALOG_Y + 90,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
-        mp.drawString(rule, centerX, DIALOG_Y + 130,
-                Constants.COLOR_WHITE, AssetLoader.font15, DrawString.MIDDLE);
-        mp.drawString(press, centerX, DIALOG_Y + DIALOG_H - 40,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
-        mp.spriteBatch.end();
+        new Dialog(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H)
+                .setPanelColor(panel)
+                .setBorderColor(white ? Constants.COLOR_WHITE : Constants.COLOR_BLACK)
+                .addCenteredLine(title, AssetLoader.font30, 30, Constants.COLOR_WHITE)
+                .addCenteredLine(color, AssetLoader.font20, 90, Constants.COLOR_WHITE)
+                .addCenteredLine(rule, AssetLoader.font15, 130, Constants.COLOR_WHITE)
+                .addCenteredLine(press, AssetLoader.font20, DIALOG_H - 40, Constants.COLOR_WHITE)
+                .render(this.getMainPanel(), 0, 0);
     }
 
     @Override
@@ -604,9 +609,12 @@ public class ChessBallPuzzle extends ChessBallModel {
     }
 
     private void renderBackground() {
+        final int dy = Constants.TOP_BAR_HEIGHT;
+        renderTopBar();
+
         this.getMainPanel().spriteBatch.begin();
 
-        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, 0);
+        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, dy);
         this.getBoard().renderBoard(this.getMainPanel());
         this.getBoard().renderInformations(this.getMainPanel());
 
@@ -615,9 +623,9 @@ public class ChessBallPuzzle extends ChessBallModel {
         }
 
         if (this.isMenu) {
-            this.getMainPanel().spriteBatch.draw(AssetLoader.textPuzzle[0], 15, 85);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.puzzleBackground, 15, 170);
-            this.getMainPanel().spriteBatch.draw(AssetLoader.textPuzzle[1], 15, 185);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.textPuzzle[0], 15, 85 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.puzzleBackground, 15, 170 + dy);
+            this.getMainPanel().spriteBatch.draw(AssetLoader.textPuzzle[1], 15, 185 + dy);
         }
 
         this.getMainPanel().spriteBatch.end();

@@ -12,7 +12,9 @@ import com.badlogic.gdx.math.Vector2;
 public class ChessBallBoard {
 
     private static final int ADD_X = 15;
-    private static final int ADD_Y = 24;
+    /** Board Y offset. Includes {@link Constants#TOP_BAR_HEIGHT} so the board sits
+     *  below the in-app title bar. Original layout offset was 24. */
+    private static final int ADD_Y = 24 + Constants.TOP_BAR_HEIGHT;
 
     private ChessBallColor currentColor = ChessBallColor.WHITE;
 
@@ -574,10 +576,11 @@ public class ChessBallBoard {
     }
 
     public void renderInformations(MainPanel mainPanel) {
-        mainPanel.spriteBatch.draw(AssetLoader.color[this.currentColor.getImageValue()], 33, 35);
+        int infoY = 35 + Constants.TOP_BAR_HEIGHT;
+        mainPanel.spriteBatch.draw(AssetLoader.color[this.currentColor.getImageValue()], 33, infoY);
 
-        mainPanel.spriteBatch.draw(AssetLoader.numbers[this.scoreWhite], 350, 35);
-        mainPanel.spriteBatch.draw(AssetLoader.numbers[this.scoreBlack], 425, 35);
-        mainPanel.spriteBatch.draw(AssetLoader.numbers[this.passesLeft], 112, 35);
+        mainPanel.spriteBatch.draw(AssetLoader.numbers[this.scoreWhite], 350, infoY);
+        mainPanel.spriteBatch.draw(AssetLoader.numbers[this.scoreBlack], 425, infoY);
+        mainPanel.spriteBatch.draw(AssetLoader.numbers[this.passesLeft], 112, infoY);
     }
 }

@@ -44,7 +44,7 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
     /** Per-depth beam widths (index = remaining depth). [0]=leaf=unused. */
     private static final int[] BEAM = {0, 12, 18, 28, 40};
     /** Negamax search beam at the root. */
-    private static final int ROOT_BEAM = 80;
+    private static final int ROOT_BEAM = 120;
 
     private final String name;
     private final int maxDepth;
@@ -140,6 +140,16 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
             RankedTurn rt = out.get(i);
             ChessBallFigure[][] after = TurnGenerator.applyTurn(board, rt.turn);
 
+            // Already-winning terminal: ball in our goal or opponent's king captured.
+            // The game ends — defensive concerns are moot. Without this guard, hang/unsafe
+            // penalties would push terminal-winning moves below GOAL, breaking the
+            // "always take an immediate goal" override in the difficulty pickers.
+            int afterEval = Evaluator.evaluate(after);
+            if (afterEval >= Evaluator.GOAL) {
+                checkedCount++;
+                continue;
+            }
+
             boolean unsafe = TurnGenerator.canScoreInOneTurn(after, false, perCheckMs);
             int hangAfter = TurnGenerator.sumHangingValuableMaterial(after, false);
             int hangDelta = hangAfter - hangBefore;
@@ -161,8 +171,17 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         sortDesc(out);
         Gdx.app.log("AI-Defense",
                 getName() + ": " + checkedCount + " checked, " + unsafeCount + " unsafe, "
-                + newHangCount + " creates-new-hang, " + fixedHangCount + " fixes-hang. Picked "
+                + newHangCount + " creates-new-hang, " + fixedHangCount + " fixes-hang. Top1 "
                 + describeTurn(out.get(0).turn, isBlack) + " (final score " + out.get(0).score + ")");
+        // Per-term breakdown of top-3 candidates so we can see WHY a move was picked.
+        int dump = Math.min(3, out.size());
+        for (int i = 0; i < dump; i++) {
+            RankedTurn rt = out.get(i);
+            ChessBallFigure[][] after = TurnGenerator.applyTurn(board, rt.turn);
+            Gdx.app.log("AI-Eval",
+                    "  #" + (i + 1) + " " + describeTurn(rt.turn, isBlack)
+                    + " score=" + rt.score + " | " + Evaluator.describeBreakdown(after));
+        }
         return out;
     }
 

@@ -3,6 +3,7 @@ package com.apogames.chessball.game.menu;
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.DrawString;
+import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.ChessBallModel;
@@ -21,6 +22,11 @@ public class ChessBallMenu extends ChessBallModel {
 
     public ChessBallMenu(MainPanel mainPanel) {
         super(mainPanel);
+    }
+
+    @Override
+    protected String getTopBarTitle() {
+        return Localization.getInstance().getCommon().get("topbar.menu");
     }
 
     @Override
@@ -125,19 +131,22 @@ public class ChessBallMenu extends ChessBallModel {
     }
 
     private void renderBackground() {
+        final int dy = Constants.TOP_BAR_HEIGHT;
+        renderTopBar();
+
         this.getMainPanel().spriteBatch.begin();
 
-        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, 0);
+        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, dy);
 
         this.getBoard().renderBoard(this.getMainPanel());
 
-        this.getMainPanel().spriteBatch.draw(AssetLoader.menu, 15, 75);
+        this.getMainPanel().spriteBatch.draw(AssetLoader.menu, 15, 75 + dy);
 
-        this.getMainPanel().drawString(this.getMainPanel().getPlayerWhite().getName(), 121, 191, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE);
-        this.getMainPanel().drawString(this.getMainPanel().getPlayerWhite().getName(), 120, 190, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        this.getMainPanel().drawString(this.getMainPanel().getPlayerWhite().getName(), 121, 191 + dy, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE);
+        this.getMainPanel().drawString(this.getMainPanel().getPlayerWhite().getName(), 120, 190 + dy, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
 
-        this.getMainPanel().drawString(this.getMainPanel().getPlayerBlack().getName(), 368, 191, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE);
-        this.getMainPanel().drawString(this.getMainPanel().getPlayerBlack().getName(), 367, 190, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        this.getMainPanel().drawString(this.getMainPanel().getPlayerBlack().getName(), 368, 191 + dy, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE);
+        this.getMainPanel().drawString(this.getMainPanel().getPlayerBlack().getName(), 367, 190 + dy, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
 
         this.getMainPanel().spriteBatch.end();
     }

@@ -1,19 +1,27 @@
 package com.apogames.chessball.ai;
 
 import com.apogames.chessball.ai.algo.AlphaBetaAI;
+import com.apogames.chessball.ai.algo.Evaluator;
+import com.apogames.chessball.ai.algo.TurnGenerator;
 import com.apogames.chessball.game.enums.ChessBallFigure;
 
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Medium AI — depth-2 negamax. Always sees 1-move-ahead opponent threats and
- * defends them. 5 % chance of playing rank-2 in non-critical positions.
+ * Medium AI — same depth-2 search as before. Tactical override (goal/king-capture
+ * always taken), then random pick from a 20 % score window. Distinguished from
+ * Hard by shallower depth (2 vs 3) and a wider pool (20 % vs 5 %), so Medium
+ * still plays strong moves but is consistently outranked by Hard over time.
  */
 public class Medium extends AlphaBetaAI {
 
+    private static final int RANDOM_POOL_ABS_FLOOR = 500;
+    private static final int RANDOM_POOL_ABS_CAP   = 8_000;
+    private static final int RANDOM_POOL_PERCENT   = 10;
+
     public Medium() {
-        super("Medium", 2, 1000L);
+        super("Medium", 2, 1500L);
     }
 
     @Override protected long defenseCheckMs()    { return 400L; }
@@ -22,8 +30,26 @@ public class Medium extends AlphaBetaAI {
     @Override
     protected List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking) {
         if (ranking.isEmpty()) return Collections.emptyList();
-        if (isCritical(ranking) || ranking.size() < 2) return ranking.get(0).turn;
-        if (RNG.nextInt(100) < 50)                     return ranking.get(1).turn;
-        return ranking.get(0).turn;
+        RankedTurn top = ranking.get(0);
+
+        // Same immediate-goal preference as Hard — see Hard.pickFromRanking.
+        if (top.score >= Evaluator.GOAL) {
+            for (RankedTurn rt : ranking) {
+                if (rt.score < Evaluator.GOAL) break;
+                ChessBallFigure[][] after = TurnGenerator.applyTurn(board, rt.turn);
+                if (Evaluator.evaluate(after) >= Evaluator.GOAL) return rt.turn;
+            }
+            return top.turn;
+        }
+
+        int window = Math.min(RANDOM_POOL_ABS_CAP,
+                Math.max(RANDOM_POOL_ABS_FLOOR, Math.abs(top.score) * RANDOM_POOL_PERCENT / 100));
+        int threshold = top.score - window;
+        int poolSize = 1;
+        for (int i = 1; i < ranking.size(); i++) {
+            if (ranking.get(i).score >= threshold) poolSize++;
+            else break;
+        }
+        return ranking.get(RNG.nextInt(poolSize)).turn;
     }
 }

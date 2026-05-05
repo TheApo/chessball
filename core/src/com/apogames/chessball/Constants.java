@@ -22,7 +22,12 @@ public class Constants {
 
     public static final int MAX_SCALE = 1;
     public static final int GAME_WIDTH = 480 * MAX_SCALE;
-    public static final int GAME_HEIGHT = 800 * MAX_SCALE;
+    /** Top strip reserved for the in-app title bar (mode/level/match label).
+     *  Everything below is shifted by this amount. */
+    public static final int TOP_BAR_HEIGHT = 50 * MAX_SCALE;
+    public static final int GAME_HEIGHT = (800 + TOP_BAR_HEIGHT) * MAX_SCALE;
+    /** 3px border around the canvas in Game/Puzzle, colored by side-to-move. */
+    public static final int APP_BORDER_THICKNESS = 3;
 
     public static final int BOARD_COLS = 9;
     public static final int BOARD_ROWS = 15;

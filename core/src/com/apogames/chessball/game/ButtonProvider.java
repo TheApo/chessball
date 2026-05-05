@@ -20,6 +20,7 @@
 
 package com.apogames.chessball.game;
 
+import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
@@ -48,7 +49,7 @@ import com.apogames.chessball.game.tutorial.ChessBallTutorial;
  */
 public class ButtonProvider {
 
-	private static final int BAR_Y = 740;
+	private static final int BAR_Y = 740 + Constants.TOP_BAR_HEIGHT;
 	private static final int BAR_LEFT_X = 30;
 	private static final int BAR_RIGHT_X = 330;
 	private static final int BAR_W = 120;
@@ -63,16 +64,19 @@ public class ButtonProvider {
 	public void init() {
 		this.game.getButtons().clear();
 
+		// All Y values shifted by Constants.TOP_BAR_HEIGHT to make room for the in-app title bar.
+		final int dy = Constants.TOP_BAR_HEIGHT;
+
 		// --- Main menu: mode buttons (transparent overlays on chessball_menu_puzzle.png) ---
-		addChessballButton(ChessBallMenu.FUNCTION_START,    155, 285, 175, 70);
-		addChessballButton(ChessBallMenu.FUNCTION_TUTORIAL,  80, 460, 320, 60);
-		addChessballButton(ChessBallMenu.FUNCTION_PUZZLE,    80, 600, 320, 60);
+		addChessballButton(ChessBallMenu.FUNCTION_START,    155, 285 + dy, 175, 70);
+		addChessballButton(ChessBallMenu.FUNCTION_TUTORIAL,  80, 460 + dy, 320, 60);
+		addChessballButton(ChessBallMenu.FUNCTION_PUZZLE,    80, 600 + dy, 320, 60);
 
 		// --- Main menu: AI chooser arrows ---
-		addChessballButton(ChessBallMenu.FUNCTION_LEFT_WHITE,   55, 185, 25, 35);
-		addChessballButton(ChessBallMenu.FUNCTION_RIGHT_WHITE, 160, 185, 25, 35);
-		addChessballButton(ChessBallMenu.FUNCTION_LEFT_BLACK,  300, 185, 25, 35);
-		addChessballButton(ChessBallMenu.FUNCTION_RIGHT_BLACK, 410, 185, 25, 35);
+		addChessballButton(ChessBallMenu.FUNCTION_LEFT_WHITE,   55, 185 + dy, 25, 35);
+		addChessballButton(ChessBallMenu.FUNCTION_RIGHT_WHITE, 160, 185 + dy, 25, 35);
+		addChessballButton(ChessBallMenu.FUNCTION_LEFT_BLACK,  300, 185 + dy, 25, 35);
+		addChessballButton(ChessBallMenu.FUNCTION_RIGHT_BLACK, 410, 185 + dy, 25, 35);
 
 		// --- Bottom bar: in-game / tutorial / puzzle navigation (button-strip indices match
 		//     chessball_buttons.png frames). ---
@@ -81,9 +85,9 @@ public class ButtonProvider {
 
 		// End-of-game dialog buttons — hidden by default, toggled in ChessBallGame.applyDialogVisibility().
 		// Use puzzle level button background (chessball_buttons_puzzle.png frame 0), scaled to fit text.
-		addDialogImageButton(ChessBallGame.FUNCTION_NEXT,  70, 540, 140, 50,
+		addDialogImageButton(ChessBallGame.FUNCTION_NEXT,  70, 540 + dy, 140, 50,
 				AssetLoader.puzzle[0], Localization.getInstance().getCommon().get("dialog.next"));
-		addDialogImageButton(ChessBallGame.FUNCTION_BACK, 270, 540, 140, 50,
+		addDialogImageButton(ChessBallGame.FUNCTION_BACK, 270, 540 + dy, 140, 50,
 				AssetLoader.puzzle[0], Localization.getInstance().getCommon().get("dialog.back"));
 
 		addBarImageButton(ChessBallMenu.FUNCTION_EXIT,     BAR_RIGHT_X, AssetLoader.buttons[3]);
@@ -94,7 +98,7 @@ public class ButtonProvider {
 
 		// --- Puzzle level grid: 5 columns x N rows, starting at (30,240) ---
 		final int gridStartX = 30;
-		final int gridStartY = 240;
+		final int gridStartY = 240 + dy;
 		final int gridStrideX = 90;
 		final int gridStrideY = 70;
 		final int btnW = 60;

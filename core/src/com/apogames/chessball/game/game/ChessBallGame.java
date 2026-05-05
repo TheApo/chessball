@@ -8,17 +8,16 @@ import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
+import com.apogames.chessball.entity.Dialog;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.enums.ChessBallFigure;
 import com.apogames.chessball.game.enums.ChessBallWinState;
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
-import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
 import com.badlogic.gdx.math.GridPoint2;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.I18NBundle;
 
 import java.util.List;
 
@@ -30,8 +29,9 @@ public class ChessBallGame extends ChessBallModel {
     public static final String FUNCTION_BACK = "game_back";
 
     // End-of-game dialog geometry.
+    // Y shifted by Constants.TOP_BAR_HEIGHT so the dialog sits below the in-app title bar.
     private static final int DIALOG_X = 40;
-    private static final int DIALOG_Y = 200;
+    private static final int DIALOG_Y = 200 + Constants.TOP_BAR_HEIGHT;
     private static final int DIALOG_W = 400;
     private static final int DIALOG_H = 410;
 
@@ -58,6 +58,13 @@ public class ChessBallGame extends ChessBallModel {
 
     public ChessBallGame(MainPanel mainPanel) {
         super(mainPanel);
+    }
+
+    @Override
+    protected String getTopBarTitle() {
+        return Localization.getInstance().getCommon().format("topbar.game.vs",
+                this.getMainPanel().getPlayerWhite().getName(),
+                this.getMainPanel().getPlayerBlack().getName());
     }
 
     @Override
@@ -162,12 +169,14 @@ public class ChessBallGame extends ChessBallModel {
     public void mouseButtonReleased(int x, int y, boolean isRightButton) {
         super.mouseButtonReleased(x, y, isRightButton);
 
+        // Game-over: only the dialog buttons (Next / Back) restart the match. A
+        // click anywhere else used to silently restart and leave the dialog buttons
+        // visible — the user lost their stats screen and saw stale buttons.
         if (this.chessBallWinState == ChessBallWinState.BLACK_WIN || this.chessBallWinState == ChessBallWinState.WHITE_WIN) {
-            this.restart();
             return;
         }
 
-        if (!this.isHumanPlayerTurn()) {
+        if (!this.isHumanPlayerTurn() || isAiThinking()) {
             return;
         }
 
@@ -221,6 +230,13 @@ public class ChessBallGame extends ChessBallModel {
                 this.getBoard().addGoalWhite();
                 break;
         }
+        // Goal flips the side-to-move via addGoalX → board.nextPlayer(), but the
+        // turn-finish branch (checkAndSetStepAndGo / mouseButtonReleased) skipped
+        // our own nextPlayer() to keep chessBallWinState=GOAL through the text fade.
+        // That left getAiUpdate() holding the SCORING side's stale steps. Without
+        // this reset, the next AI's aiThink() picks up that stale list and the
+        // turn appears to be skipped. Critical for AI-vs-AI matches.
+        this.getMainPanel().getAiUpdate().reset();
 
         ChessBallWinState overWinState = this.getBoard().isGameOver();
         if (overWinState != ChessBallWinState.GAME) {
@@ -234,7 +250,7 @@ public class ChessBallGame extends ChessBallModel {
     public void mouseDragged(int x, int y, boolean isRightButton) {
         super.mouseDragged(x, y, isRightButton);
 
-        if (!this.isHumanPlayerTurn()) {
+        if (!this.isHumanPlayerTurn() || isAiThinking()) {
             return;
         }
 
@@ -250,7 +266,7 @@ public class ChessBallGame extends ChessBallModel {
     public void mousePressed(int x, int y, boolean isRightButton) {
         super.mousePressed(x, y, isRightButton);
 
-        if (!this.isHumanPlayerTurn()) {
+        if (!this.isHumanPlayerTurn() || isAiThinking()) {
             return;
         }
 
@@ -271,7 +287,7 @@ public class ChessBallGame extends ChessBallModel {
     public void mouseMoved(int x, int y) {
         super.mouseMoved(x, y);
 
-        if (!this.isHumanPlayerTurn()) {
+        if (!this.isHumanPlayerTurn() || isAiThinking()) {
             return;
         }
 
@@ -312,6 +328,17 @@ public class ChessBallGame extends ChessBallModel {
             return true;
         }
         return false;
+    }
+
+    /** True while the AI's worker is computing its turn — between "AI's turn started"
+     *  and "first animation step queued". Used to suppress click input and to render
+     *  the centered "X is thinking…" overlay. */
+    private boolean isAiThinking() {
+        if (this.isHumanPlayerTurn() || this.isWon()) return false;
+        if (this.timeWaitUntilMove > 0) return false;
+        if (this.stepsToGo != null && !this.stepsToGo.isEmpty()) return false;
+        if (this.time > 0) return false;
+        return true;
     }
 
     @Override
@@ -362,6 +389,9 @@ public class ChessBallGame extends ChessBallModel {
         this.mouseDifPosition.x = -1;
         this.figurePosition.x = -1;
         this.getBoard().deleteCircle();
+        // HTML backend renders only on markDirty(); restart can fire from doThink
+        // (auto-restart after a draw / no-step-possible) without an input event.
+        Game.markDirty();
     }
 
     @Override
@@ -531,11 +561,39 @@ public class ChessBallGame extends ChessBallModel {
 
         if (isWon()) {
             renderWinDialog();
+        } else if (isAiThinking()) {
+            renderThinkingDialog();
         }
 
         for (ApoButton button : this.getMainPanel().getButtons()) {
             button.render(this.getMainPanel(), 0, 0);
         }
+
+        renderTurnBorder();
+    }
+
+    /** Centered "X is thinking..." overlay shown while the AI worker computes; clicks
+     *  are blocked elsewhere. Border color reflects which side is to move so the
+     *  player can see whose turn the wait is for. ASCII dots — the bitmap font
+     *  doesn't carry the Unicode ellipsis glyph. */
+    private void renderThinkingDialog() {
+        I18NBundle i18n = Localization.getInstance().getCommon();
+        boolean white = this.getBoard().getCurrentColor() == ChessBallColor.WHITE;
+        String side = i18n.get(white ? "dialog.white" : "dialog.black");
+        String thinking = i18n.get("dialog.thinking");
+        int w = 400, h = 120;
+        int x = (Constants.GAME_WIDTH - w) / 2;
+        int y = (Constants.GAME_HEIGHT - h) / 2;
+        float[] panel = new float[]{Constants.COLOR_CLEAR[0], Constants.COLOR_CLEAR[1],
+                Constants.COLOR_CLEAR[2], 0.88f};
+        // font.draw renders DOWNWARD from textY, so for vertical-center with
+        // ~30px font height: textY = h/2 - fontHeight/2 ≈ h/2 - 15.
+        new Dialog(x, y, w, h)
+                .setPanelColor(panel)
+                .setBorderColor(white ? Constants.COLOR_WHITE : Constants.COLOR_BLACK)
+                .addCenteredLine(side + " " + thinking + "...", AssetLoader.font30, h / 2 - 10,
+                        Constants.COLOR_WHITE)
+                .render(this.getMainPanel(), 0, 0);
     }
 
     @Override
@@ -548,9 +606,11 @@ public class ChessBallGame extends ChessBallModel {
     }
 
     private void renderBackground() {
+        renderTopBar();
+
         this.getMainPanel().spriteBatch.begin();
 
-        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, 0);
+        this.getMainPanel().spriteBatch.draw(AssetLoader.background, 0, Constants.TOP_BAR_HEIGHT);
         this.getBoard().renderBoard(this.getMainPanel());
         this.getBoard().renderInformations(this.getMainPanel());
 
@@ -576,89 +636,56 @@ public class ChessBallGame extends ChessBallModel {
     }
 
     /**
-     * End-of-game dialog: semi-transparent green panel with dark-green border, title
-     * (Glückwunsch / Schade depending on whether You won), winner line, per-side
-     * statistics (Pässe/Züge/Geschlagen/Verloren), then Next + Back buttons (rendered
-     * by {@code MainPanel.getButtons()} so they stay clickable).
+     * End-of-game dialog: title (Glückwunsch / Schade depending on whether You won),
+     * winner line, per-side statistics (Pässe/Züge/Geschlagen/Verloren). The Next +
+     * Back buttons sit underneath and are rendered by {@code MainPanel.getButtons()}
+     * so they stay clickable.
      */
     private void renderWinDialog() {
-        MainPanel mp = this.getMainPanel();
-
-        // --- Panel + border (ShapeRenderer with alpha blending) ---
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-
-        mp.getRenderer().begin(ShapeType.Filled);
-        mp.getRenderer().setColor(0.05f, 0.40f, 0.05f, 0.88f);
-        mp.getRenderer().roundedRect(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
-        mp.getRenderer().end();
-
-        Gdx.gl20.glLineWidth(3f);
-        mp.getRenderer().begin(ShapeType.Line);
-        mp.getRenderer().setColor(0.02f, 0.20f, 0.02f, 1f);
-        mp.getRenderer().roundedRectLine(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H, 12);
-        mp.getRenderer().end();
-        Gdx.gl20.glLineWidth(1f);
-        Gdx.gl.glDisable(GL20.GL_BLEND);
-
-        // --- Text contents (SpriteBatch) ---
         boolean youWon = computeYouWon();
         boolean whiteWon = this.chessBallWinState == ChessBallWinState.WHITE_WIN;
-        com.badlogic.gdx.utils.I18NBundle i18n = Localization.getInstance().getCommon();
+        I18NBundle i18n = Localization.getInstance().getCommon();
         String title = i18n.get(youWon ? "dialog.congrats" : "dialog.too_bad");
         String white = i18n.get("dialog.white");
         String black = i18n.get("dialog.black");
         String winnerSide = whiteWon ? white : black;
-        String winnerName = whiteWon ? mp.getPlayerWhite().getName() : mp.getPlayerBlack().getName();
+        String winnerName = whiteWon ? this.getMainPanel().getPlayerWhite().getName()
+                                     : this.getMainPanel().getPlayerBlack().getName();
 
-        int centerX = DIALOG_X + DIALOG_W / 2;
+        int colWhiteX = 230;
+        int colBlackX = 350;
 
-        mp.spriteBatch.begin();
-        mp.drawString(title, centerX, DIALOG_Y + 30,
-                Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE);
-        mp.drawString(i18n.get("dialog.winner") + ": " + winnerSide + " (" + winnerName + ")",
-                centerX, DIALOG_Y + 70,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+        Dialog dialog = new Dialog(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H)
+                .addCenteredLine(title, AssetLoader.font30, 30, Constants.COLOR_WHITE)
+                .addCenteredLine(i18n.get("dialog.winner") + ": " + winnerSide + " (" + winnerName + ")",
+                        AssetLoader.font20, 70, Constants.COLOR_WHITE)
+                .addLine(white, AssetLoader.font20, colWhiteX, 120, DrawString.MIDDLE, Constants.COLOR_WHITE)
+                .addLine(black, AssetLoader.font20, colBlackX, 120, DrawString.MIDDLE, Constants.COLOR_WHITE);
 
-        // Stats table — column headers, then 4 rows.
-        int colWhiteX = DIALOG_X + 230;
-        int colBlackX = DIALOG_X + 350;
-        int rowY = DIALOG_Y + 120;
-
-        mp.drawString(white, colWhiteX, rowY,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
-        mp.drawString(black, colBlackX, rowY,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
-
-        rowY += 40;
-        drawStatRow(i18n.get("dialog.passes"),
+        addStatRow(dialog, i18n.get("dialog.passes"),
                 this.getBoard().getPassesWhite(), this.getBoard().getPassesBlack(),
-                colWhiteX, colBlackX, rowY);
-        rowY += 35;
-        drawStatRow(i18n.get("dialog.moves"),
+                colWhiteX, colBlackX, 160);
+        addStatRow(dialog, i18n.get("dialog.moves"),
                 this.getBoard().getMovesWhite(), this.getBoard().getMovesBlack(),
-                colWhiteX, colBlackX, rowY);
-        rowY += 35;
-        drawStatRow(i18n.get("dialog.captured"),
+                colWhiteX, colBlackX, 195);
+        addStatRow(dialog, i18n.get("dialog.captured"),
                 this.getBoard().getCapturedByWhite(), this.getBoard().getCapturedByBlack(),
-                colWhiteX, colBlackX, rowY);
-        rowY += 35;
+                colWhiteX, colBlackX, 230);
         // "Lost" = pieces of mine captured by the opponent.
-        drawStatRow(i18n.get("dialog.lost"),
+        addStatRow(dialog, i18n.get("dialog.lost"),
                 this.getBoard().getCapturedByBlack(), this.getBoard().getCapturedByWhite(),
-                colWhiteX, colBlackX, rowY);
-        mp.spriteBatch.end();
+                colWhiteX, colBlackX, 265);
+
+        dialog.render(this.getMainPanel(), 0, 0);
     }
 
-    private void drawStatRow(String label, int whiteVal, int blackVal,
-                             int colWhiteX, int colBlackX, int y) {
-        MainPanel mp = this.getMainPanel();
-        mp.drawString(label, DIALOG_X + 20, y,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN);
-        mp.drawString(String.valueOf(whiteVal), colWhiteX, y,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
-        mp.drawString(String.valueOf(blackVal), colBlackX, y,
-                Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE);
+    private void addStatRow(Dialog dialog, String label, int whiteVal, int blackVal,
+                            int colWhiteX, int colBlackX, int relativeY) {
+        dialog.addLine(label, AssetLoader.font20, 20, relativeY, DrawString.BEGIN, Constants.COLOR_WHITE);
+        dialog.addLine(String.valueOf(whiteVal), AssetLoader.font20, colWhiteX, relativeY,
+                DrawString.MIDDLE, Constants.COLOR_WHITE);
+        dialog.addLine(String.valueOf(blackVal), AssetLoader.font20, colBlackX, relativeY,
+                DrawString.MIDDLE, Constants.COLOR_WHITE);
     }
 
     /**

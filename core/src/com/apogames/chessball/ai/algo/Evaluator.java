@@ -59,20 +59,20 @@ public final class Evaluator {
      *  per-term breakdown for diagnostics. Slow — only call from logging paths. */
     public static String describeBreakdown(ChessBallFigure[][] board) {
         int bx = -1, by = -1;
+        int wkx = -1, wky = -1, bkx = -1, bky = -1;
         int materialBalance = 0;
-        boolean whiteKing = false, blackKing = false;
         for (int x = 0; x < W; x++) {
             for (int y = 0; y < H; y++) {
                 ChessBallFigure f = board[x][y];
                 if (f == null || f == ChessBallFigure.EMPTY) continue;
                 if (f == ChessBallFigure.BALL) { bx = x; by = y; continue; }
-                if (f == ChessBallFigure.WHITE_KING) whiteKing = true;
-                else if (f == ChessBallFigure.BLACK_KING) blackKing = true;
+                if (f == ChessBallFigure.WHITE_KING) { wkx = x; wky = y; }
+                else if (f == ChessBallFigure.BLACK_KING) { bkx = x; bky = y; }
                 materialBalance += f.isWhite() ? MATERIAL[f.getFieldValue()] : -MATERIAL[f.getFieldValue()];
             }
         }
-        if (!whiteKing) return "TERMINAL: white king captured (-GOAL)";
-        if (!blackKing) return "TERMINAL: black king captured (+GOAL)";
+        if (wkx < 0) return "TERMINAL: white king captured (-GOAL)";
+        if (bkx < 0) return "TERMINAL: black king captured (+GOAL)";
         if (by == OWN_GOAL_Y && bx >= 3 && bx <= 5) return "TERMINAL: white scored (+GOAL)";
         if (by == ENEMY_GOAL_Y && bx >= 3 && bx <= 5) return "TERMINAL: black scored (-GOAL)";
         if (bx < 0) return "material=" + materialBalance + " (no ball)";
@@ -98,8 +98,8 @@ public final class Evaluator {
         int wReach = Math.min(BALL_REACH_CAP, countCanMoveAdjacentToBall(board, bx, by, true));
         int bReach = Math.min(BALL_REACH_CAP, countCanMoveAdjacentToBall(board, bx, by, false));
         int reach = W_BALL_REACHABLE * (wReach - bReach);
-        boolean wKingAtt = isKingAttacked(board, true);
-        boolean bKingAtt = isKingAttacked(board, false);
+        boolean wKingAtt = isKingAttacked(board, true,  wkx, wky);
+        boolean bKingAtt = isKingAttacked(board, false, bkx, bky);
         int kingThreat = (bKingAtt ? W_KING_THREAT : 0) - (wKingAtt ? W_KING_THREAT : 0);
         int lane = W_OPEN_LANE * (openLane(board, bx, by, +1) - openLane(board, bx, by, -1));
         int total = materialBalance + shotW - shotB + progress + nearGoal + nearBall + reach + kingThreat + lane;
@@ -116,23 +116,23 @@ public final class Evaluator {
 
     public static int evaluate(ChessBallFigure[][] board) {
         int bx = -1, by = -1;
+        int wkx = -1, wky = -1, bkx = -1, bky = -1;
         int materialBalance = 0;
-        boolean whiteKing = false, blackKing = false;
 
         for (int x = 0; x < W; x++) {
             for (int y = 0; y < H; y++) {
                 ChessBallFigure f = board[x][y];
                 if (f == null || f == ChessBallFigure.EMPTY) continue;
                 if (f == ChessBallFigure.BALL) { bx = x; by = y; continue; }
-                if (f == ChessBallFigure.WHITE_KING) whiteKing = true;
-                else if (f == ChessBallFigure.BLACK_KING) blackKing = true;
+                if (f == ChessBallFigure.WHITE_KING) { wkx = x; wky = y; }
+                else if (f == ChessBallFigure.BLACK_KING) { bkx = x; bky = y; }
                 materialBalance += f.isWhite() ? MATERIAL[f.getFieldValue()] : -MATERIAL[f.getFieldValue()];
             }
         }
 
         // Terminals.
-        if (!whiteKing) return -GOAL;
-        if (!blackKing) return  GOAL;
+        if (wkx < 0) return -GOAL;
+        if (bkx < 0) return  GOAL;
         if (by == OWN_GOAL_Y   && bx >= 3 && bx <= 5) return  GOAL;
         if (by == ENEMY_GOAL_Y && bx >= 3 && bx <= 5) return -GOAL;
 
@@ -176,8 +176,8 @@ public final class Evaluator {
         // capture) is missed at depth 3, so we add a strong static penalty here so leaving the
         // king attacked is always expensive — defending becomes the obvious choice unless a
         // forced win is already on the board.
-        if (isKingAttacked(board, true))  score -= W_KING_THREAT;
-        if (isKingAttacked(board, false)) score += W_KING_THREAT;
+        if (isKingAttacked(board, true,  wkx, wky)) score -= W_KING_THREAT;
+        if (isKingAttacked(board, false, bkx, bky)) score += W_KING_THREAT;
 
         // Open passing lane in ball's column.
         score += W_OPEN_LANE * (openLane(board, bx, by, +1) - openLane(board, bx, by, -1));
@@ -252,26 +252,66 @@ public final class Evaluator {
     }
 
     /** True if any enemy piece could chess-move onto the given side's king square in
-     *  one move. Returns false if the king is already gone (the terminal branch in
-     *  evaluate() handles that). Early-exits on the first found attacker. */
-    private static boolean isKingAttacked(ChessBallFigure[][] board, boolean forWhiteKing) {
-        ChessBallFigure kingType = forWhiteKing ? ChessBallFigure.WHITE_KING : ChessBallFigure.BLACK_KING;
-        int kx = -1, ky = -1;
-        for (int x = 0; x < W && kx < 0; x++) {
-            for (int y = 0; y < H; y++) {
-                if (board[x][y] == kingType) { kx = x; ky = y; break; }
-            }
-        }
+     *  one move. Uses ray-cast FROM the king instead of iterating all enemy pieces —
+     *  costs at most 8 rays + 8 knight squares (~50 ops vs ~160 for the generic
+     *  iterate-all-pieces approach). Hot path on HTML/GWT. */
+    private static boolean isKingAttacked(ChessBallFigure[][] board, boolean forWhiteKing, int kx, int ky) {
         if (kx < 0) return false;
-        for (int x = 0; x < W; x++) {
-            for (int y = 0; y < H; y++) {
-                ChessBallFigure f = board[x][y];
-                if (f == null || f == ChessBallFigure.EMPTY || f == ChessBallFigure.BALL) continue;
-                if (f.isWhite() == forWhiteKing) continue;
-                if (canPieceReach(board, f, x, y, kx, ky)) return true;
+
+        // Orthogonal rays — enemy rook/queen on a clear line, or enemy king at distance 1.
+        if (rayHits(board, kx, ky,  1,  0, forWhiteKing, false)) return true;
+        if (rayHits(board, kx, ky, -1,  0, forWhiteKing, false)) return true;
+        if (rayHits(board, kx, ky,  0,  1, forWhiteKing, false)) return true;
+        if (rayHits(board, kx, ky,  0, -1, forWhiteKing, false)) return true;
+
+        // Diagonal rays — enemy bishop/queen, or enemy king at distance 1.
+        if (rayHits(board, kx, ky,  1,  1, forWhiteKing, true)) return true;
+        if (rayHits(board, kx, ky, -1,  1, forWhiteKing, true)) return true;
+        if (rayHits(board, kx, ky,  1, -1, forWhiteKing, true)) return true;
+        if (rayHits(board, kx, ky, -1, -1, forWhiteKing, true)) return true;
+
+        // Knight squares — 8 fixed offsets, direct lookup.
+        ChessBallFigure enemyKnight = forWhiteKing ? ChessBallFigure.BLACK_KNIGHT : ChessBallFigure.WHITE_KNIGHT;
+        if (knightAt(board, kx + 1, ky + 2, enemyKnight)) return true;
+        if (knightAt(board, kx + 1, ky - 2, enemyKnight)) return true;
+        if (knightAt(board, kx - 1, ky + 2, enemyKnight)) return true;
+        if (knightAt(board, kx - 1, ky - 2, enemyKnight)) return true;
+        if (knightAt(board, kx + 2, ky + 1, enemyKnight)) return true;
+        if (knightAt(board, kx + 2, ky - 1, enemyKnight)) return true;
+        if (knightAt(board, kx - 2, ky + 1, enemyKnight)) return true;
+        if (knightAt(board, kx - 2, ky - 1, enemyKnight)) return true;
+
+        return false;
+    }
+
+    /** Walks (dx, dy) from (kx, ky) until off-board or first non-empty square.
+     *  Treats the ball as transparent (matches the existing pass-through behavior).
+     *  Reports a hit if the first piece is an enemy line-piece of the right type
+     *  (orthogonal: rook/queen; diagonal: bishop/queen) or an enemy king at step 1. */
+    private static boolean rayHits(ChessBallFigure[][] board, int kx, int ky, int dx, int dy,
+                                    boolean forWhiteKing, boolean diagonal) {
+        int x = kx + dx, y = ky + dy;
+        int steps = 1;
+        while (x >= 0 && x < W && y >= 0 && y < H) {
+            ChessBallFigure f = board[x][y];
+            if (f == null || f == ChessBallFigure.EMPTY || f == ChessBallFigure.BALL) {
+                x += dx; y += dy; steps++; continue;
             }
+            if (f.isWhite() == forWhiteKing) return false; // own piece blocks
+            if (f == ChessBallFigure.WHITE_QUEEN || f == ChessBallFigure.BLACK_QUEEN) return true;
+            if (diagonal) {
+                if (f == ChessBallFigure.WHITE_BISHOP || f == ChessBallFigure.BLACK_BISHOP) return true;
+            } else {
+                if (f == ChessBallFigure.WHITE_ROOK || f == ChessBallFigure.BLACK_ROOK) return true;
+            }
+            if (steps == 1 && (f == ChessBallFigure.WHITE_KING || f == ChessBallFigure.BLACK_KING)) return true;
+            return false; // first piece is enemy but wrong type — blocks rest of ray
         }
         return false;
+    }
+
+    private static boolean knightAt(ChessBallFigure[][] board, int x, int y, ChessBallFigure enemyKnight) {
+        return x >= 0 && x < W && y >= 0 && y < H && board[x][y] == enemyKnight;
     }
 
     /** Counts pieces of the given color that are NOT already adjacent to the ball

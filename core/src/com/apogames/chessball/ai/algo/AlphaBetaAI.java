@@ -1,5 +1,6 @@
 package com.apogames.chessball.ai.algo;
 
+import com.apogames.chessball.Constants;
 import com.apogames.chessball.ai.ChessBallAIInformations;
 import com.apogames.chessball.ai.ChessBallPlayerAI;
 import com.apogames.chessball.ai.ChessBallStep;
@@ -41,10 +42,25 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
     /** Score gap above which "best" is forced (no mistakes injected). 30k ≈ a knight. */
     protected static final int CRITICAL_GAP = 30_000;
 
-    /** Per-depth beam widths (index = remaining depth). [0]=leaf=unused. */
-    private static final int[] BEAM = {0, 12, 18, 28, 40};
+    /** Per-depth beam widths (index = remaining depth). [0]=leaf=unused.
+     *  GWT-compiled HTML/JS runs each negamax node ~5-10× slower than the JVM,
+     *  so we use much tighter beams there. The HTML values are tuned so that
+     *  Hard's depth-3 negamax reliably FINISHES inside the 4 s budget on a mid
+     *  laptop browser — without that, iterative deepening only completes depth 1
+     *  and Hard plays worse than Easy. */
+    private static final int[] BEAM      = {0, 12, 18, 28, 40};
+    private static final int[] BEAM_HTML = {0,  4,  6, 10, 14};
     /** Negamax search beam at the root. */
-    private static final int ROOT_BEAM = 120;
+    private static final int ROOT_BEAM      = 120;
+    private static final int ROOT_BEAM_HTML = 25;
+
+    private static int rootBeam() {
+        return Constants.IS_HTML ? ROOT_BEAM_HTML : ROOT_BEAM;
+    }
+    private static int beamFor(int depth) {
+        int[] b = Constants.IS_HTML ? BEAM_HTML : BEAM;
+        return depth < b.length ? b[depth] : b[b.length - 1];
+    }
 
     private final String name;
     private final int maxDepth;
@@ -76,9 +92,10 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         // defensively, e.g. king retreats, still get the safety check).
         List<RankedTurn> fullRanking = staticRank(board, rootTurns);
 
-        // Negamax pool: top ROOT_BEAM by static. Iterative deepening refines scores.
-        List<RankedTurn> negamaxRanking = fullRanking.size() > ROOT_BEAM
-                ? new ArrayList<RankedTurn>(fullRanking.subList(0, ROOT_BEAM))
+        // Negamax pool: top rootBeam() by static. Iterative deepening refines scores.
+        int rootBeam = rootBeam();
+        List<RankedTurn> negamaxRanking = fullRanking.size() > rootBeam
+                ? new ArrayList<RankedTurn>(fullRanking.subList(0, rootBeam))
                 : new ArrayList<RankedTurn>(fullRanking);
 
         for (int d = 2; d <= maxDepth; d++) {
@@ -256,7 +273,7 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         // FROM OPPONENT POV = ascending from AI POV.
         List<RankedTurn> ordered = staticRank(board, turns);
         if (!isMyTurn) Collections.reverse(ordered);
-        int beam = depth < BEAM.length ? BEAM[depth] : BEAM[BEAM.length - 1];
+        int beam = beamFor(depth);
         int upTo = Math.min(beam, ordered.size());
 
         int best = -Evaluator.GOAL * 2;

@@ -1,5 +1,6 @@
 package com.apogames.chessball.ai;
 
+import com.apogames.chessball.Constants;
 import com.apogames.chessball.ai.algo.AlphaBetaAI;
 import com.apogames.chessball.ai.algo.Evaluator;
 import com.apogames.chessball.ai.algo.TurnGenerator;
@@ -24,8 +25,12 @@ public class Medium extends AlphaBetaAI {
         super("Medium", 2, 1500L);
     }
 
-    @Override protected long defenseCheckMs()    { return 400L; }
-    @Override protected int  defenseMaxChecked() { return 500; }
+    // HTML/GWT: 500 candidates × 400 ms = 200 s rechnerisch — der 10 s Wall-Cap
+    // wird sofort gerissen und nur ~25 Kandidaten kriegen überhaupt einen Defense-
+    // Check. Auf HTML kürzen wir auf top-30 × 80 ms (~2.5 s Wall) damit Medium das
+    // Move-Time-Budget einhält.
+    @Override protected long defenseCheckMs()    { return Constants.IS_HTML ? 80L : 400L; }
+    @Override protected int  defenseMaxChecked() { return Constants.IS_HTML ? 30  : 500; }
 
     @Override
     protected List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking) {

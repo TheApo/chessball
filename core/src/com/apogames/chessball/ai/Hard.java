@@ -1,5 +1,6 @@
 package com.apogames.chessball.ai;
 
+import com.apogames.chessball.Constants;
 import com.apogames.chessball.ai.algo.AlphaBetaAI;
 import com.apogames.chessball.ai.algo.Evaluator;
 import com.apogames.chessball.ai.algo.TurnGenerator;
@@ -32,8 +33,13 @@ public class Hard extends AlphaBetaAI {
 
     public Hard() { super("Hard", 3, 4000L); }
 
-    @Override protected long defenseCheckMs()    { return 1000L; }
-    @Override protected int  defenseMaxChecked() { return Integer.MAX_VALUE; }
+    // HTML/GWT runs each scoringDfs node ~5-10× slower than the JVM, so giving
+    // every candidate 1 s + unlimited count blows the 10 s wall budget. On HTML we
+    // check the top-50 candidates × 100 ms each — combined with the tighter HTML
+    // negamax beams this keeps Hard's total move time below ~5 s while still doing
+    // real defense work on the moves most likely to be picked.
+    @Override protected long defenseCheckMs()    { return Constants.IS_HTML ? 100L  : 1000L; }
+    @Override protected int  defenseMaxChecked() { return Constants.IS_HTML ? 50    : Integer.MAX_VALUE; }
 
     @Override
     protected List<ChessBallStep> pickFromRanking(ChessBallFigure[][] board, List<RankedTurn> ranking) {

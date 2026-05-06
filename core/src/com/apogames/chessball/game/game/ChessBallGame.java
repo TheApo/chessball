@@ -11,12 +11,12 @@ import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.entity.Dialog;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
+import com.apogames.chessball.game.MoveAnimator;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.enums.ChessBallFigure;
 import com.apogames.chessball.game.enums.ChessBallWinState;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.math.GridPoint2;
-import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.I18NBundle;
 
 import java.util.List;
@@ -44,12 +44,11 @@ public class ChessBallGame extends ChessBallModel {
 
     private ChessBallWinState chessBallWinState = ChessBallWinState.GAME;
     private float time = 0;
-    private float timeWaitUntilMove = 0;
     private int imageTextIndex = 0;
 
     private String currentString;
 
-    private List<ChessBallStep> stepsToGo;
+    private final MoveAnimator animator = new MoveAnimator(getBoard());
 
     /** Complete-match demo string built turn-by-turn for upload at game-over.
      *  Format: {@code figX,figY,toX,toY,figType;...;#...#}. */
@@ -231,8 +230,8 @@ public class ChessBallGame extends ChessBallModel {
                 break;
         }
         // Goal flips the side-to-move via addGoalX → board.nextPlayer(), but the
-        // turn-finish branch (checkAndSetStepAndGo / mouseButtonReleased) skipped
-        // our own nextPlayer() to keep chessBallWinState=GOAL through the text fade.
+        // turn-finish branches (animated turn / mouseButtonReleased) skipped our
+        // own nextPlayer() to keep chessBallWinState=GOAL through the text fade.
         // That left getAiUpdate() holding the SCORING side's stale steps. Without
         // this reset, the next AI's aiThink() picks up that stale list and the
         // turn appears to be skipped. Critical for AI-vs-AI matches.
@@ -335,8 +334,7 @@ public class ChessBallGame extends ChessBallModel {
      *  the centered "X is thinking…" overlay. */
     private boolean isAiThinking() {
         if (this.isHumanPlayerTurn() || this.isWon()) return false;
-        if (this.timeWaitUntilMove > 0) return false;
-        if (this.stepsToGo != null && !this.stepsToGo.isEmpty()) return false;
+        if (animator.isActive()) return false;
         if (this.time > 0) return false;
         return true;
     }
@@ -384,6 +382,7 @@ public class ChessBallGame extends ChessBallModel {
         this.turnShow();
 
         this.getMainPanel().getAiUpdate().reset();
+        animator.clear();
         keys = new boolean[256];
         choosenFigure = null;
         this.mouseDifPosition.x = -1;
@@ -411,18 +410,24 @@ public class ChessBallGame extends ChessBallModel {
         // status) changes visuals without user input. The HTML backend skips render()
         // by default unless markDirty() is called, so animations only show when we
         // explicitly request a redraw. Desktop/Android always render and don't need this.
-        boolean animating = this.timeWaitUntilMove > 0
-                || (this.stepsToGo != null && !this.stepsToGo.isEmpty())
+        boolean animating = animator.isActive()
                 || this.time > 0
                 || (!this.isHumanPlayerTurn() && !this.isWon());
         if (animating) {
             Game.markDirty();
         }
 
-        if (this.timeWaitUntilMove > 0) {
-            this.timeWaitUntilMove -= delta;
-        } else if (this.stepsToGo != null && !this.stepsToGo.isEmpty()) {
-            this.checkAndSetStepAndGo();
+        if (animator.isActive()) {
+            MoveAnimator.Phase phase = animator.tick(delta);
+            if (phase == MoveAnimator.Phase.STEP_DONE) {
+                ChessBallStep done = animator.getLastFinishedStep();
+                recordStep(done.getFigureX(), done.getFigureY(),
+                           done.getStepFigureX(), done.getStepFigureY(),
+                           animator.getLastFinishedFigure());
+                if (animator.isLastStepFinal()) {
+                    onAnimatedTurnFinished();
+                }
+            }
         } else if (this.time > 0) {
             this.time -= delta;
             if (this.time <= 0 && this.imageTextIndex <= 17) {
@@ -436,82 +441,24 @@ public class ChessBallGame extends ChessBallModel {
         }
     }
 
-    private boolean isWon() {
-        return this.chessBallWinState == ChessBallWinState.BLACK_WIN || this.chessBallWinState == ChessBallWinState.WHITE_WIN;
+    /** Auto-detect win after AI/animated turn finishes — mirrors the human path
+     *  in {@link #mouseButtonReleased(int, int, boolean)} so the goal text + reset
+     *  trigger without a click. */
+    private void onAnimatedTurnFinished() {
+        ChessBallWinState ws = this.getBoard().winCheck();
+        if (ws == ChessBallWinState.WHITE_GOAL || ws == ChessBallWinState.BLACK_GOAL
+            || ws == ChessBallWinState.WHITE_NO_KING || ws == ChessBallWinState.BLACK_NO_KING) {
+            this.time = Constants.TEXT_TIME_IN_MILLISECONDS;
+            this.chessBallWinState = ws;
+            this.checkImageText(ws);
+            recordTurnEnd();
+        } else {
+            this.nextPlayer();
+        }
     }
 
-    private void checkAndSetStepAndGo() {
-        ChessBallStep step = this.stepsToGo.get(0);
-
-        float modulo = 35f;
-
-        Vector2 vector = this.getBoard()
-                .getMovement()[step.getFigureX()][step.getFigureY()];
-        float addX = 0;
-        if (step.getStepFigureX() - step.getFigureX() < 0) {
-            addX = -1f / modulo;
-        } else if (step.getStepFigureX() - step.getFigureX() > 0) {
-            addX = 1f / modulo;
-        }
-        vector.x += addX;
-
-        float addY = 0;
-        if (step.getStepFigureY() - step.getFigureY() < 0) {
-            addY = -1f / modulo;
-        } else if (step.getStepFigureY() - step.getFigureY() > 0) {
-            addY = 1f / modulo;
-        }
-        vector.y += addY;
-
-        if ((step.getStepFigureX() - step.getFigureX() < 0 && step.getStepFigureX() - step.getFigureX() >= vector.x) ||
-            (step.getStepFigureX() - step.getFigureX() > 0 && step.getStepFigureX() - step.getFigureX() <= vector.x)) {
-            vector.x = step.getStepFigureX() - step.getFigureX();
-        }
-        if ((step.getStepFigureY() - step.getFigureY() < 0 && step.getStepFigureY() - step.getFigureY() >= vector.y) ||
-                (step.getStepFigureY() - step.getFigureY() > 0 && step.getStepFigureY() - step.getFigureY() <= vector.y)) {
-            vector.y = step.getStepFigureY() - step.getFigureY();
-        }
-
-        if (vector.x == step.getStepFigureX() - step.getFigureX() && vector.y == step.getStepFigureY() - step.getFigureY()) {
-            ChessBallFigure chessBallFigure = this.getBoard()
-                    .getBoard()[step.getFigureX()][step.getFigureY()];
-            ChessBallFigure capturedAtTarget = this.getBoard()
-                    .getBoard()[step.getStepFigureX()][step.getStepFigureY()];
-            this.getBoard().recordAction(chessBallFigure, capturedAtTarget);
-            recordStep(step.getFigureX(), step.getFigureY(),
-                       step.getStepFigureX(), step.getStepFigureY(), chessBallFigure);
-            this.getBoard()
-                    .getBoard()[step.getFigureX()][step.getFigureY()] = ChessBallFigure.EMPTY;
-            this.getBoard()
-                    .getBoard()[step.getStepFigureX()][step.getStepFigureY()] = chessBallFigure;
-            // Reset movement offsets at BOTH endpoints. Without this, the source's
-            // stale offset (set during this animation) would mis-render any later
-            // piece that lands on this square, and a later step with dx=0 (or dy=0)
-            // could never terminate because the termination check is "vector ==
-            // delta" — a stale vector.x=1 vs delta=0 deadlocks the animation.
-            this.getBoard().getMovement()[step.getFigureX()][step.getFigureY()].set(0f, 0f);
-            this.getBoard().getMovement()[step.getStepFigureX()][step.getStepFigureY()].set(0f, 0f);
-            this.stepsToGo.remove(step);
-            this.getBoard().deleteCircle();
-
-            if (this.stepsToGo.isEmpty()) {
-                // Auto-detect win after AI/animated turn finishes — mirrors the human path
-                // in mouseButtonReleased so the goal text + reset trigger without a click.
-                ChessBallWinState ws = this.getBoard().winCheck();
-                if (ws == ChessBallWinState.WHITE_GOAL || ws == ChessBallWinState.BLACK_GOAL
-                    || ws == ChessBallWinState.WHITE_NO_KING || ws == ChessBallWinState.BLACK_NO_KING) {
-                    this.time = Constants.TEXT_TIME_IN_MILLISECONDS;
-                    this.chessBallWinState = ws;
-                    this.checkImageText(ws);
-                    recordTurnEnd();
-                } else {
-                    this.nextPlayer();
-                }
-            } else {
-                this.getBoard().setPossibleStepsForPosition(this.stepsToGo.get(0).getFigureX(), this.stepsToGo.get(0).getFigureY());
-                timeWaitUntilMove = Constants.WAIT_UNTIL_MOVE_IN_MILLISECONDS;
-            }
-        }
+    private boolean isWon() {
+        return this.chessBallWinState == ChessBallWinState.BLACK_WIN || this.chessBallWinState == ChessBallWinState.WHITE_WIN;
     }
 
     private void aiThink() {
@@ -520,9 +467,7 @@ public class ChessBallGame extends ChessBallModel {
             if (update.isEmpty()) {
                 this.nextPlayer();
             } else {
-                this.stepsToGo = update;
-                this.getBoard().setPossibleStepsForPosition(this.stepsToGo.get(0).getFigureX(), this.stepsToGo.get(0).getFigureY());
-                timeWaitUntilMove = Constants.WAIT_UNTIL_MOVE_IN_MILLISECONDS;
+                animator.start(update);
             }
         } else if (this.getMainPanel().getAiUpdate().isRunning()) {
             if (this.getBoard().getCurrentColor() == ChessBallColor.BLACK && this.getMainPanel().getPlayerBlack().getCurrentString() != null) {

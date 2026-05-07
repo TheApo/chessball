@@ -28,9 +28,9 @@ i:b:/fonts/frutiger30.png:36198:1
 i:b:/fonts/frutiger40.fnt:34842:1
 i:b:/fonts/frutiger40.png:50203:1
 i:b:/fonts/OpenSans.ttf:217360:1
-i:b:/i18n/Common.properties:1930:1
-i:b:/i18n/Common_de.properties:2084:1
-i:b:/i18n/Common_en.properties:1848:1
+i:b:/i18n/Common.properties:1990:1
+i:b:/i18n/Common_de.properties:2144:1
+i:b:/i18n/Common_en.properties:1907:1
 c:b:/com/badlogic/gdx/utils/lsans-15.png:10270:1
 c:b:/com/badlogic/gdx/graphics/g3d/shaders/default.vertex.glsl:9096:1
 c:b:/com/badlogic/gdx/graphics/g3d/particles/particles.fragment.glsl:820:1

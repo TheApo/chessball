@@ -161,7 +161,7 @@ public class ChessBallGame extends ChessBallModel {
         this.figurePosition.y = -1;
         this.mouseDifPosition.x = -1;
         this.mouseDifPosition.y = -1;
-        this.getBoard().deleteCircle();
+        clearClickSelection();
 
         this.turnShow();
     }
@@ -186,14 +186,46 @@ public class ChessBallGame extends ChessBallModel {
             return;
         }
 
-        if (this.choosenFigure != null) {
-            this.getBoard().checkToSetFigure(x, y, this.figurePosition);
-            ChessBallStep applied = this.getBoard().getLastStep();
-            if (applied != null) {
-                recordStep(applied.getFigureX(), applied.getFigureY(),
-                           applied.getStepFigureX(), applied.getStepFigureY(),
-                           this.getBoard().getLastStepFigure());
-            }
+        boolean isClick = wasClick(x, y);
+        boolean pickedAtPress = (choosenFigure != null && choosenFigure != ChessBallFigure.EMPTY);
+
+        // Click on an own movable piece: persist the selection so the next click can move it.
+        // No move yet — the press already painted this piece's target circles.
+        if (isClick && pickedAtPress) {
+            promoteClickSelection(figurePosition);
+            choosenFigure = null;
+            mouseDifPosition.x = -1;
+            figurePosition.x = -1;
+            return;
+        }
+
+        // Click on a non-pickable cell while a piece is already click-selected:
+        // try to apply the move from the persistent selection. checkToSetFigure
+        // will no-op if the target isn't a valid circle, in which case we deselect.
+        if (isClick && !pickedAtPress && hasClickSelection()) {
+            applyReleaseMove(x, y, selectedPosition);
+            return;
+        }
+
+        // Drag path (release moved beyond click threshold) or click on empty without selection.
+        if (pickedAtPress) {
+            applyReleaseMove(x, y, figurePosition);
+        } else {
+            // Drag from an empty cell: nothing to apply, but leave any active click-selection
+            // intact since the user didn't act on a real piece.
+            choosenFigure = null;
+            mouseDifPosition.x = -1;
+            figurePosition.x = -1;
+        }
+    }
+
+    private void applyReleaseMove(int x, int y, GridPoint2 source) {
+        this.getBoard().checkToSetFigure(x, y, source);
+        ChessBallStep applied = this.getBoard().getLastStep();
+        if (applied != null) {
+            recordStep(applied.getFigureX(), applied.getFigureY(),
+                       applied.getStepFigureX(), applied.getStepFigureY(),
+                       this.getBoard().getLastStepFigure());
         }
 
         ChessBallWinState winState = this.getBoard().winCheck();
@@ -209,7 +241,7 @@ public class ChessBallGame extends ChessBallModel {
         choosenFigure = null;
         this.mouseDifPosition.x = -1;
         this.figurePosition.x = -1;
-        this.getBoard().deleteCircle();
+        clearClickSelection();
     }
 
     private void checkImageText(ChessBallWinState chessBallWinState) {
@@ -280,12 +312,21 @@ public class ChessBallGame extends ChessBallModel {
             return;
         }
 
+        this.pressPixelX = x;
+        this.pressPixelY = y;
         this.choosenFigure = null;
         this.mouseMoved(x, y);
 
         if ((choosenFigure != null) && (this.choosenFigure != ChessBallFigure.EMPTY)) {
             this.mouseDifPosition = this.getBoard().getMouseChange(x, y);
+            // Wipe a previous click-selection's circles before painting the new piece's —
+            // setPossibleStepsForPosition only adds, it doesn't clear.
+            this.getBoard().deleteCircle();
             this.getBoard().setPossibleStepsForPosition(this.figurePosition.x, this.figurePosition.y);
+        } else if (hasClickSelection()) {
+            // Press landed on a non-movable cell — restore the source highlight that
+            // mouseMoved() cleared, so the click-selection stays visible.
+            this.getBoard().getMouseOver().set(selectedPosition);
         }
     }
 
@@ -307,18 +348,21 @@ public class ChessBallGame extends ChessBallModel {
         GridPoint2 point = this.getBoard().getPointForPosition(x, y);
         if (point != null) {
             ChessBallFigure figure = this.getBoard().getBoard()[point.x][point.y];
-            if (figure == ChessBallFigure.EMPTY) {
-                return;
-            }
             if (figure == ChessBallFigure.BALL) {
                 if (this.getBoard().hasNeighborsForBall(point)) {
                     this.setChoosenFigureToMove(point, figure);
                 }
-            } else if ((this.getBoard().getCurrentColor() == ChessBallColor.WHITE && figure.isWhite())
-                    || (this.getBoard().getCurrentColor() == ChessBallColor.BLACK && !figure.isWhite())) {
+            } else if (figure != ChessBallFigure.EMPTY
+                    && ((this.getBoard().getCurrentColor() == ChessBallColor.WHITE && figure.isWhite())
+                    || (this.getBoard().getCurrentColor() == ChessBallColor.BLACK && !figure.isWhite()))) {
                 this.setChoosenFigureToMove(point, figure);
             }
+        }
 
+        if (hasClickSelection() && (choosenFigure == null || choosenFigure == ChessBallFigure.EMPTY)) {
+            // Hover over an empty/enemy/non-pickable cell shouldn't drop the click-selection
+            // highlight — keep the source cell marked as long as the selection is active.
+            this.getBoard().getMouseOver().set(selectedPosition);
         }
     }
 
@@ -381,9 +425,9 @@ public class ChessBallGame extends ChessBallModel {
         currentGameString.setLength(0);
         demoUploaded = false;
 
-        if (this.chessBallWinState == ChessBallWinState.WHITE_WIN) {
-            this.getBoard().setCurrentColor(ChessBallColor.BLACK);
-        }
+        // Chess convention: white always opens a fresh match, regardless of who
+        // moved last in the previous game (winner, scorer, or current side).
+        this.getBoard().setCurrentColor(ChessBallColor.WHITE);
         this.chessBallWinState = ChessBallWinState.GAME;
 
         this.turnShow();
@@ -394,7 +438,7 @@ public class ChessBallGame extends ChessBallModel {
         choosenFigure = null;
         this.mouseDifPosition.x = -1;
         this.figurePosition.x = -1;
-        this.getBoard().deleteCircle();
+        clearClickSelection();
         // HTML backend renders only on markDirty(); restart can fire from doThink
         // (auto-restart after a draw / no-step-possible) without an input event.
         Game.markDirty();

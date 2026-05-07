@@ -8,6 +8,7 @@ import com.apogames.chessball.entity.TextSegment;
 import com.apogames.chessball.entity.TopBar;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType;
+import com.badlogic.gdx.math.GridPoint2;
 import com.badlogic.gdx.utils.I18NBundle;
 
 import java.util.ArrayList;
@@ -22,6 +23,21 @@ public abstract class ChessBallModel extends SequentiallyThinkingScreenModel {
 
     /** Shared title bar instance — segments are queried per render via {@link #getTopBarSegments()}. */
     protected final TopBar topBar = new TopBar();
+
+    /** Persistent click-mode selection (board cell). x = -1 means no selection.
+     *  Set when the user clicks (release within {@link #CLICK_DRAG_THRESHOLD_SQ} of press)
+     *  on an own movable piece; cleared on a successful move, deselect-click, or drag. */
+    protected final GridPoint2 selectedPosition = new GridPoint2(-1, -1);
+
+    /** Pixel coordinates where the most recent {@code mousePressed} occurred — used by
+     *  {@link #wasClick(int, int)} to distinguish a click from a drag at release time. */
+    protected int pressPixelX = 0;
+    protected int pressPixelY = 0;
+
+    /** Squared pixel distance below which a press→release counts as a click (vs drag).
+     *  8 px is small enough that any deliberate drag exceeds it, large enough to absorb
+     *  hand jitter on touch devices. */
+    protected static final int CLICK_DRAG_THRESHOLD_SQ = 8 * 8;
 
     public ChessBallModel(MainPanel mainPanel) {
         super(mainPanel);
@@ -65,6 +81,32 @@ public abstract class ChessBallModel extends SequentiallyThinkingScreenModel {
         segments.add(new TextSegment(title + " - ", Constants.COLOR_WHITE));
         segments.add(new TextSegment(sideLabel, sideColor));
         return segments;
+    }
+
+    /** True when a release at (x,y) is close enough to {@link #pressPixelX}/{@link #pressPixelY}
+     *  to count as a click rather than a drag. */
+    protected boolean wasClick(int releaseX, int releaseY) {
+        int dx = releaseX - pressPixelX;
+        int dy = releaseY - pressPixelY;
+        return dx * dx + dy * dy < CLICK_DRAG_THRESHOLD_SQ;
+    }
+
+    protected boolean hasClickSelection() {
+        return selectedPosition.x >= 0;
+    }
+
+    /** Promote the press-time pickup to a persistent click selection. The press
+     *  already painted move-target circles via {@code setPossibleStepsForPosition},
+     *  so we only need to remember the source cell and keep the highlight on it. */
+    protected void promoteClickSelection(GridPoint2 source) {
+        selectedPosition.set(source.x, source.y);
+        getBoard().getMouseOver().set(source.x, source.y);
+    }
+
+    protected void clearClickSelection() {
+        selectedPosition.x = -1;
+        getBoard().deleteCircle();
+        getBoard().getMouseOver().x = -1;
     }
 
     /** Renders the title bar (Constants.COLOR_CLEAR strip + centered title). Call once

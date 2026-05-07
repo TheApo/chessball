@@ -5,7 +5,7 @@ import com.apogames.chessball.ai.ChessBallStep;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.backend.Game;
-import com.apogames.chessball.backend.io.IOOnlineLibgdx;
+import com.apogames.chessball.backend.io.DemoCache;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.entity.TextSegment;
@@ -220,20 +220,25 @@ public class ChessBallMenu extends ChessBallModel {
         }
     }
 
-    /** Async fetch — same pattern as {@code ChessBallPuzzle.requestRandomDemo}. */
+    /** Pull a random unseen demo from the local cache (filled on app start by
+     *  {@code MainPanel.fetchDemosAsync}). LOADING phase is kept for parity with
+     *  the previous async flow — the result lands instantly via pendingDemo and
+     *  is drained on the very next think tick.
+     *
+     *  Cache-empty is treated as transient (first launch with the fetch still
+     *  in flight): we stay IDLE and let the next idle threshold try again,
+     *  rather than burning through {@link #DEMO_MAX_FAILURES}. */
     private void requestRandomDemo() {
         idleTime = 0;
+        DemoCache cache = this.getMainPanel().getDemoCache();
+        DemoCache.Entry entry = cache.pick(DemoCache.Side.MENU);
+        if (entry == null) {
+            return;
+        }
+        cache.persistSeen();
         demoPhase = DemoPhase.LOADING;
-        pendingDemo = null;
+        pendingDemo = new ChessBallDemo(entry.solution);
         pendingError = null;
-        this.getMainPanel().getOnline().loadRandomDemo(new IOOnlineLibgdx.DemoCallback() {
-            public void onDemo(int id, String solution) {
-                pendingDemo = new ChessBallDemo(solution);
-            }
-            public void onError(String message) {
-                pendingError = message;
-            }
-        });
     }
 
     private void onDemoFetchFailed(String reason) {

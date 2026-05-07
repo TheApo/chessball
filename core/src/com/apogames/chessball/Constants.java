@@ -41,6 +41,7 @@ public class Constants {
 
     public static final String DEMO_GETPHP  = "https://www.apo-games.de/chessball/get_demo_random.php";
     public static final String DEMO_SAVEPHP = "https://www.apo-games.de/chessball/save_demo.php";
+    public static final String DEMOS_SINCE_GETPHP = "https://www.apo-games.de/chessball/get_demos_since.php";
 
     public static final int TEXT_TIME_IN_MILLISECONDS = 1500;
     public static final int WAIT_UNTIL_MOVE_IN_MILLISECONDS = 500;

@@ -11,6 +11,7 @@ import com.apogames.chessball.ai.You;
 import com.apogames.chessball.backend.GameProperties;
 import com.apogames.chessball.backend.GameScreen;
 import com.apogames.chessball.backend.ScreenModel;
+import com.apogames.chessball.backend.io.DemoCache;
 import com.apogames.chessball.backend.io.IOOnlineLibgdx;
 import com.apogames.chessball.game.enums.ChessBallColor;
 import com.apogames.chessball.game.game.ChessBallGame;
@@ -32,6 +33,11 @@ public class MainPanel extends GameScreen {
     private ChessBallPuzzle puzzle;
 
     private GameProperties gameProperties;
+    private DemoCache demoCache;
+    /** True while a {@link #fetchDemosAsync} request is in flight. Set on the
+     *  render thread before the request, cleared on either thread when the
+     *  callback fires (success path bounces to render thread first). */
+    private volatile boolean fetchInFlight;
 
     private IClassLoader classLoader;
 
@@ -60,6 +66,13 @@ public class MainPanel extends GameScreen {
         this.gameProperties = new ChessBallProperties(this);
         this.puzzle.setGameProperties(this.gameProperties);
         this.loadProperties();
+
+        // Demo pool shares the same Preferences file. Load whatever was cached locally,
+        // then fire-and-forget a delta fetch — anything new lands in the cache before
+        // the user enters menu-idle or clicks puzzle-random.
+        this.demoCache = new DemoCache(this.gameProperties.getPref());
+        this.demoCache.load();
+        this.fetchDemosAsync();
 
         if ((this.getButtons() == null) || (this.getButtons().isEmpty())) {
             new ButtonProvider(this).init();
@@ -135,8 +148,48 @@ public class MainPanel extends GameScreen {
         return online;
     }
 
+    public DemoCache getDemoCache() {
+        return demoCache;
+    }
+
     public ChessBallPuzzle getPuzzle() {
         return puzzle;
+    }
+
+    /** Async delta fetch: pulls everything with id > cache.maxId (server caps at 1500),
+     *  merges into the cache, persists. Errors are logged and silently ignored — the
+     *  game falls back to the existing local cache (or local levels if empty).
+     *  No-op when a fetch is already in flight. */
+    private void fetchDemosAsync() {
+        if (fetchInFlight) {
+            return;
+        }
+        fetchInFlight = true;
+        final DemoCache cache = this.demoCache;
+        this.online.loadDemosSince(cache.getMaxId(), new IOOnlineLibgdx.DemosCallback() {
+            @Override
+            public void onDemos(final java.util.List<DemoCache.Entry> demos, final int maxId) {
+                // Bounce to render thread: cache mutation + Preferences flush should
+                // not race with pick() calls from doThink.
+                Gdx.app.postRunnable(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!demos.isEmpty() || maxId > cache.getMaxId()) {
+                            cache.merge(demos, maxId);
+                            cache.persistAll();
+                            Gdx.app.log("DemoCache", "merged " + demos.size()
+                                    + " new demos, pool=" + cache.size() + ", maxId=" + cache.getMaxId());
+                        }
+                        fetchInFlight = false;
+                    }
+                });
+            }
+            @Override
+            public void onError(String message) {
+                fetchInFlight = false;
+                Gdx.app.log("DemoCache", "fetch failed: " + message);
+            }
+        });
     }
 
     public void loadProperties() {
@@ -169,6 +222,13 @@ public class MainPanel extends GameScreen {
     }
     
     public final void changeToMenu() {
+        // Retry the demo fetch every time we re-enter the menu as long as we
+        // never got any demos yet (first run with no network at startup).
+        // Once we successfully cached at least one batch (maxId > 0), we stop
+        // re-fetching here — the next refresh happens on the next app start.
+        if (demoCache.getMaxId() == 0 && !fetchInFlight) {
+            fetchDemosAsync();
+        }
         changeModel(menu);
     }
 

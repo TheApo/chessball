@@ -3,7 +3,7 @@ package com.apogames.chessball.game.puzzle;
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.Game;
-import com.apogames.chessball.backend.io.IOOnlineLibgdx;
+import com.apogames.chessball.backend.io.DemoCache;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.entity.Dialog;
@@ -148,18 +148,20 @@ public class ChessBallPuzzle extends ChessBallModel {
         this.restart();
     }
 
-    /** Async fetch of a random demo; result is drained on next think tick. */
+    /** Pull a random unseen demo from the local cache. The cache is filled at app
+     *  start ({@code MainPanel.fetchDemosAsync}); when empty (e.g. first launch
+     *  with no network), fall back to a local level instead of waiting. */
     private void requestRandomDemo() {
         pendingError = null;
         pendingDemo = null;
-        this.getMainPanel().getOnline().loadRandomDemo(new IOOnlineLibgdx.DemoCallback() {
-            public void onDemo(int id, String solution) {
-                pendingDemo = new ChessBallDemo(solution);
-            }
-            public void onError(String message) {
-                pendingError = message;
-            }
-        });
+        DemoCache cache = this.getMainPanel().getDemoCache();
+        DemoCache.Entry entry = cache.pick(DemoCache.Side.PUZZLE);
+        if (entry == null) {
+            fallbackToLocalLevel("demo cache empty");
+            return;
+        }
+        cache.persistSeen();
+        pendingDemo = new ChessBallDemo(entry.solution);
     }
 
     /**

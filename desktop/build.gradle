@@ -30,9 +30,10 @@ task solverCheck(dependsOn: classes, type: JavaExec) {
 }
 
 // Headless self-play harness — runs many AI-vs-AI games and writes a populated
-// transposition table that ships in core/assets/ai/tt.txt.
+// transposition table that ships in assets/ai/tt.txt (where Gdx.files.internal
+// looks for it at runtime).
 //   ./gradlew desktop:runSelfPlay --args="--games 100 --white Hard --black Hard"
-// workingDir is the repo root so the default --out path "core/assets/ai/tt.txt"
+// workingDir is the repo root so the default --out path "assets/ai/tt.txt"
 // resolves correctly.
 task runSelfPlay(dependsOn: classes, type: JavaExec) {
     mainClass.set("com.apogames.chessball.desktop.SelfPlayMain")

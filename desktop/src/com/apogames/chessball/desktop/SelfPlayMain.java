@@ -204,7 +204,7 @@ public final class SelfPlayMain {
         int games = 100;
         String white = "Hard";
         String black = "Hard";
-        File outFile = new File("core/assets/ai/tt.txt");
+        File outFile = new File("assets/ai/tt.txt");
         File loadFile = null;
         int threads = Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
         int maxEntries = TranspositionTable.DEFAULT_MAX_ENTRIES;
@@ -248,7 +248,7 @@ public final class SelfPlayMain {
         System.out.println("  --games N            number of games to play (default 100)");
         System.out.println("  --white  AI          Easy | Medium | Hard (default Hard)");
         System.out.println("  --black  AI          Easy | Medium | Hard (default Hard)");
-        System.out.println("  --out    PATH        output TT file (default core/assets/ai/tt.txt)");
+        System.out.println("  --out    PATH        output TT file (default assets/ai/tt.txt)");
         System.out.println("  --load   PATH        pre-load existing TT and add to it");
         System.out.println("  --threads N          parallel workers (default cores-1)");
         System.out.println("  --max-entries N      cap before serialising (default 50000)");

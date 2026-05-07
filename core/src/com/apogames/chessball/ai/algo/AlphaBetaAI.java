@@ -102,7 +102,8 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
             TranspositionTable.Entry hit = tt.get(Zobrist.hash(board, true));
             if (hit != null && hit.flag == TranspositionTable.Flag.EXACT
                     && hit.depth >= maxDepth
-                    && hit.bestMove != null && !hit.bestMove.isEmpty()) {
+                    && hit.bestMove != null && !hit.bestMove.isEmpty()
+                    && fromSquareLooksValid(board, hit.bestMove.get(0))) {
                 Gdx.app.log("AI-TT", getName() + ": root cache hit (depth "
                         + hit.depth + ", score " + hit.score + ", visits "
                         + hit.visits + "), skipping search");
@@ -268,6 +269,20 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         return sb.toString();
     }
 
+    /** Cheap sanity guard before trusting a TT-hit's bestMove at the root.
+     *  The 48-bit truncated hash in the binary TT format has a non-negligible
+     *  collision rate at large table sizes — without this check, a colliding
+     *  entry could feed us a move whose from-square is empty, which then crashes
+     *  in {@code TurnGenerator.applyTurn}. AI thinks in white-POV, so the
+     *  from-square must hold *some* (non-empty) piece. */
+    private static boolean fromSquareLooksValid(ChessBallFigure[][] board, ChessBallStep s) {
+        int fx = s.getFigureX(), fy = s.getFigureY();
+        if (fx < 0 || fx >= Constants.BOARD_COLS) return false;
+        if (fy < 0 || fy >= Constants.BOARD_ROWS) return false;
+        ChessBallFigure f = board[fx][fy];
+        return f != null && f != ChessBallFigure.EMPTY;
+    }
+
     /** Per-candidate budget for the defense check. Override per difficulty. */
     protected long defenseCheckMs()    { return 80L; }
 
@@ -307,7 +322,11 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         final long hash = (tt != null) ? Zobrist.hash(board, isMyTurn) : 0L;
         if (tt != null) {
             TranspositionTable.Entry hit = tt.get(hash);
-            if (hit != null && hit.depth >= depth) {
+            // Skip disk-loaded entries — their score/depth/flag are placeholders
+            // (only bestMove survives the binary round-trip). Using them for
+            // internal cutoffs would inject score=0 EXACT and poison the search.
+            // The root-cache shortcut in update() handles them safely.
+            if (hit != null && !hit.fromDisk && hit.depth >= depth) {
                 switch (hit.flag) {
                     case EXACT:       return hit.score;
                     case LOWER_BOUND: if (hit.score >= beta)  return hit.score; break;

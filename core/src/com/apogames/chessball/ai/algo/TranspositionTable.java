@@ -5,7 +5,6 @@ import com.badlogic.gdx.files.FileHandle;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,10 +19,17 @@ import java.util.Map;
  * shipped Hard AI starts already knowing common positions (built up by
  * self-play, see {@code SelfPlayMain} and {@code assets/ai/tt.txt}).
  *
- * <p>Plain-text serialisation, one entry per line:
- * <pre>{@code
- * <hashHex>;<depth>;<score>;<flag>;<fromX,fromY,toX,toY|...>;<visits>
- * }</pre>
+ * <p>Compact binary serialisation (magic {@code TTBN1\n}), per entry:
+ * <pre>
+ *   6 B  hash low 48 bits, big-endian
+ *   1 B  step count
+ *   N×2B steps, each = (fx&lt;&lt;12)|(fy&lt;&lt;8)|(tx&lt;&lt;4)|ty
+ * </pre>
+ * Typical 3-step entry = 13 bytes (~6× smaller than the legacy plain-text
+ * format, which is still readable on load for backwards compatibility). Only
+ * the bestMove survives the round-trip — depth/score/flag are not persisted
+ * because the runtime root cache only consults bestMove. See {@link Entry#fromDisk}
+ * for the in-search safety story.
  */
 public final class TranspositionTable {
 
@@ -36,40 +42,63 @@ public final class TranspositionTable {
         public final Flag flag;
         public final List<ChessBallStep> bestMove;
         public int visits;
+        /** True for entries reconstructed from disk — depth/score/flag are placeholders.
+         *  Safe at the root cache shortcut (which only consults bestMove), but in-search
+         *  negamax MUST skip these or the bogus score=0 EXACT poisons cutoffs. */
+        public final boolean fromDisk;
 
         public Entry(long hash, int depth, int score, Flag flag,
                      List<ChessBallStep> bestMove, int visits) {
+            this(hash, depth, score, flag, bestMove, visits, false);
+        }
+
+        public Entry(long hash, int depth, int score, Flag flag,
+                     List<ChessBallStep> bestMove, int visits, boolean fromDisk) {
             this.hash = hash;
             this.depth = depth;
             this.score = score;
             this.flag = flag;
             this.bestMove = bestMove;
             this.visits = visits;
+            this.fromDisk = fromDisk;
         }
     }
 
-    /** Cap when serialising — keep top-N by visits×depth. ~3 MB plain text. */
+    /** Cap when serialising — keep top-N by visits×depth. */
     public static final int DEFAULT_MAX_ENTRIES = 50_000;
+
+    /** Hash truncation for the binary format — low 48 bits. Trades collision
+     *  resistance for a 25 % smaller hash field. Birthday-collision odds are
+     *  ~0.4 % at 50 K entries, ~7 % at 200 K. {@link #AlphaBetaAI} guards by
+     *  validating the from-square of a hit's bestMove before using it. */
+    public static final long HASH_MASK = 0xFFFFFFFFFFFFL;
+
+    /** Marker for entries materialised from disk. Higher than any plausible
+     *  search depth so the root-shortcut always considers them deep enough. */
+    private static final int LOADED_DEPTH = 99;
+
+    private static final byte[] BINARY_MAGIC = {'T', 'T', 'B', 'N', '1', '\n'};
 
     private final Map<Long, Entry> map = new HashMap<Long, Entry>();
 
     public int size() { return map.size(); }
 
-    public Entry get(long hash) { return map.get(hash); }
+    public Entry get(long hash) { return map.get(hash & HASH_MASK); }
 
     /** Insert or update. On collision, prefer higher-depth entry (more accurate);
      *  on equal/lower depth, keep existing but bump visits so popular shallow
      *  entries get retained when capping. */
     public void put(long hash, int depth, int score, Flag flag,
                     List<ChessBallStep> bestMove) {
-        Entry existing = map.get(hash);
+        long key = hash & HASH_MASK;
+        Entry existing = map.get(key);
         if (existing == null) {
-            map.put(hash, new Entry(hash, depth, score, flag, bestMove, 1));
+            map.put(key, new Entry(key, depth, score, flag, bestMove, 1));
             return;
         }
         existing.visits++;
         if (depth > existing.depth) {
-            map.put(hash, new Entry(hash, depth, score, flag, bestMove,
+            map.put(key, new Entry(key, depth, score, flag, bestMove,
                     existing.visits));
         }
     }
@@ -78,15 +107,16 @@ public final class TranspositionTable {
      *  global self-play table without thread-safe contention during the search. */
     public void merge(TranspositionTable other) {
         for (Entry e : other.map.values()) {
-            Entry mine = map.get(e.hash);
+            long key = e.hash & HASH_MASK;
+            Entry mine = map.get(key);
             if (mine == null) {
-                map.put(e.hash, new Entry(e.hash, e.depth, e.score, e.flag,
-                        e.bestMove, e.visits));
+                map.put(key, new Entry(key, e.depth, e.score, e.flag,
+                        e.bestMove, e.visits, e.fromDisk));
             } else {
                 mine.visits += e.visits;
                 if (e.depth > mine.depth) {
-                    map.put(e.hash, new Entry(e.hash, e.depth, e.score, e.flag,
-                            e.bestMove, mine.visits));
+                    map.put(key, new Entry(key, e.depth, e.score, e.flag,
+                            e.bestMove, mine.visits, e.fromDisk));
                 }
             }
         }
@@ -107,23 +137,66 @@ public final class TranspositionTable {
         return all;
     }
 
-    /** Append all entries (top {@code maxEntries}) as plain text to the file.
-     *  Overwrites if the handle exists. */
+    /** Serialise top-N entries as compact binary (format {@code TTBN1}). Per entry:
+     *  6 B hash (low 48 bits, big-endian), 1 B step count, then N×2 B packed steps
+     *  (each = {@code (fx<<12)|(fy<<8)|(tx<<4)|ty}). On load, depth/score/flag are
+     *  reconstituted as {@code LOADED_DEPTH}/0/EXACT — see {@link Entry#fromDisk}.
+     *  Only entries with non-empty bestMove are written (others can't drive a
+     *  root cache hit, so they'd be dead weight on disk). */
     public void saveTo(FileHandle file, int maxEntries) {
-        StringBuilder sb = new StringBuilder(map.size() * 80);
-        sb.append("# ChessBall TT v1 — fields: hashHex;depth;score;flag;move;visits\n");
-        for (Entry e : topEntries(maxEntries)) {
-            appendEntry(sb, e);
-            sb.append('\n');
-        }
-        file.writeString(sb.toString(), false);
+        file.writeBytes(encodeBinary(maxEntries), false);
     }
 
-    /** Load from a file handle. Tolerant: skips blank/comment lines and any
-     *  malformed entry without aborting. */
+    /** Convenience for writers that don't need a FileHandle (e.g. CLI tools). */
+    public void saveTo(java.io.File file, int maxEntries) {
+        try {
+            try (java.io.OutputStream out = new java.io.BufferedOutputStream(
+                    new java.io.FileOutputStream(file))) {
+                out.write(encodeBinary(maxEntries));
+            }
+        } catch (IOException ex) {
+            throw new RuntimeException("Failed to write TT to " + file, ex);
+        }
+    }
+
+    private byte[] encodeBinary(int maxEntries) {
+        List<Entry> top = topEntries(maxEntries);
+        // Worst-case sizing: 6 + 1 + (15 steps × 2) per entry. Real avg ~13 B.
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream(
+                BINARY_MAGIC.length + top.size() * 16);
+        buf.write(BINARY_MAGIC, 0, BINARY_MAGIC.length);
+        for (Entry e : top) {
+            if (e.bestMove == null || e.bestMove.isEmpty()) continue;
+            int stepCount = Math.min(255, e.bestMove.size());
+            long h = e.hash & HASH_MASK;
+            buf.write((int) (h >>> 40) & 0xFF);
+            buf.write((int) (h >>> 32) & 0xFF);
+            buf.write((int) (h >>> 24) & 0xFF);
+            buf.write((int) (h >>> 16) & 0xFF);
+            buf.write((int) (h >>> 8)  & 0xFF);
+            buf.write((int) h          & 0xFF);
+            buf.write(stepCount);
+            for (int i = 0; i < stepCount; i++) {
+                ChessBallStep s = e.bestMove.get(i);
+                int packed = ((s.getFigureX()     & 0xF) << 12)
+                           | ((s.getFigureY()     & 0xF) << 8)
+                           | ((s.getStepFigureX() & 0xF) << 4)
+                           |  (s.getStepFigureY() & 0xF);
+                buf.write((packed >>> 8) & 0xFF);
+                buf.write(packed         & 0xFF);
+            }
+        }
+        return buf.toByteArray();
+    }
+
+    /** Load from a file handle. Auto-detects format: binary {@code TTBN1} when
+     *  the magic header matches, otherwise falls back to legacy V1 plain text
+     *  (so previously committed {@code tt.txt} files still work). */
     public void loadFrom(FileHandle file) {
         if (file == null || !file.exists()) return;
-        loadFromString(file.readString());
+        byte[] data = file.readBytes();
+        if (looksBinary(data)) loadBinary(data);
+        else loadFromString(new String(data));
     }
 
     public void loadFromString(String content) {
@@ -134,36 +207,51 @@ public final class TranspositionTable {
                 if (line.isEmpty() || line.charAt(0) == '#') continue;
                 Entry e = parseEntry(line);
                 if (e == null) continue;
-                map.put(e.hash, e);
+                map.put(e.hash & HASH_MASK, new Entry(e.hash & HASH_MASK,
+                        e.depth, e.score, e.flag, e.bestMove, e.visits));
             }
         } catch (IOException ignored) {
             // StringReader doesn't actually throw — defensive only.
         }
     }
 
-    private static void appendEntry(StringBuilder sb, Entry e) {
-        sb.append(Long.toHexString(e.hash)).append(';');
-        sb.append(e.depth).append(';');
-        sb.append(e.score).append(';');
-        sb.append(e.flag.name()).append(';');
-        if (e.bestMove != null) {
-            for (int i = 0; i < e.bestMove.size(); i++) {
-                ChessBallStep s = e.bestMove.get(i);
-                if (i > 0) sb.append('|');
-                sb.append(s.getFigureX()).append(',')
-                  .append(s.getFigureY()).append(',')
-                  .append(s.getStepFigureX()).append(',')
-                  .append(s.getStepFigureY());
-            }
+    private static boolean looksBinary(byte[] data) {
+        if (data == null || data.length < BINARY_MAGIC.length) return false;
+        for (int i = 0; i < BINARY_MAGIC.length; i++) {
+            if (data[i] != BINARY_MAGIC[i]) return false;
         }
-        sb.append(';').append(e.visits);
+        return true;
+    }
+
+    private void loadBinary(byte[] data) {
+        int pos = BINARY_MAGIC.length;
+        while (pos + 7 <= data.length) {
+            long h = 0L;
+            for (int i = 0; i < 6; i++) {
+                h = (h << 8) | (data[pos + i] & 0xFFL);
+            }
+            pos += 6;
+            int stepCount = data[pos++] & 0xFF;
+            if (pos + stepCount * 2 > data.length) break;
+            ArrayList<ChessBallStep> steps = new ArrayList<ChessBallStep>(stepCount);
+            for (int i = 0; i < stepCount; i++) {
+                int packed = ((data[pos] & 0xFF) << 8) | (data[pos + 1] & 0xFF);
+                pos += 2;
+                steps.add(new ChessBallStep(
+                        (packed >>> 12) & 0xF,
+                        (packed >>> 8)  & 0xF,
+                        (packed >>> 4)  & 0xF,
+                         packed         & 0xF));
+            }
+            map.put(h, new Entry(h, LOADED_DEPTH, 0, Flag.EXACT, steps, 1, true));
+        }
     }
 
     private static Entry parseEntry(String line) {
         try {
             String[] parts = line.split(";", -1);
             if (parts.length < 6) return null;
-            long hash = Long.parseUnsignedLong(parts[0], 16);
+            long hash = parseHexUnsigned(parts[0]);
             int depth = Integer.parseInt(parts[1]);
             int score = Integer.parseInt(parts[2]);
             Flag flag = Flag.valueOf(parts[3]);
@@ -173,6 +261,25 @@ public final class TranspositionTable {
         } catch (RuntimeException ex) {
             return null;
         }
+    }
+
+    /** Hand-rolled hex-to-long because {@code Long.parseUnsignedLong(String, int)}
+     *  isn't emulated by TeaVM/gdx-teavm — the HTML build links the method to a
+     *  throwing stub. Pure char arithmetic, no JDK helper required. */
+    private static long parseHexUnsigned(String s) {
+        int n = s.length();
+        if (n == 0 || n > 16) throw new NumberFormatException(s);
+        long result = 0L;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            int digit;
+            if      (c >= '0' && c <= '9') digit = c - '0';
+            else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+            else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+            else throw new NumberFormatException(s);
+            result = (result << 4) | digit;
+        }
+        return result;
     }
 
     private static List<ChessBallStep> parseMove(String s) {
@@ -189,22 +296,5 @@ public final class TranspositionTable {
             result.add(new ChessBallStep(fx, fy, tx, ty));
         }
         return result;
-    }
-
-    /** Convenience for writers that don't need a FileHandle (e.g. CLI tools). */
-    public void saveTo(java.io.File file, int maxEntries) {
-        try {
-            try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
-                pw.println("# ChessBall TT v1 — fields: hashHex;depth;score;flag;move;visits");
-                StringBuilder sb = new StringBuilder(120);
-                for (Entry e : topEntries(maxEntries)) {
-                    sb.setLength(0);
-                    appendEntry(sb, e);
-                    pw.println(sb);
-                }
-            }
-        } catch (IOException ex) {
-            throw new RuntimeException("Failed to write TT to " + file, ex);
-        }
     }
 }

@@ -2,7 +2,6 @@ package com.apogames.chessball.game.game;
 
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.ai.ChessBallStep;
-import com.apogames.chessball.ai.You;
 import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.DrawString;
 import com.apogames.chessball.backend.Game;
@@ -589,29 +588,29 @@ public class ChessBallGame extends ChessBallModel {
     }
 
     /**
-     * End-of-game dialog: title (Glückwunsch / Schade depending on whether You won),
-     * winner line, per-side statistics (Pässe/Züge/Geschlagen/Verloren). The Next +
-     * Back buttons sit underneath and are rendered by {@code MainPanel.getButtons()}
-     * so they stay clickable.
+     * End-of-game dialog: winner line, matchup line ("White-AI score : score Black-AI"),
+     * per-side statistics (Pässe/Züge/Geschlagen/Verloren). The Next + Back buttons sit
+     * underneath and are rendered by {@code MainPanel.getButtons()} so they stay clickable.
      */
     private void renderWinDialog() {
-        boolean youWon = computeYouWon();
         boolean whiteWon = this.chessBallWinState == ChessBallWinState.WHITE_WIN;
         I18NBundle i18n = Localization.getInstance().getCommon();
-        String title = i18n.get(youWon ? "dialog.congrats" : "dialog.too_bad");
         String white = i18n.get("dialog.white");
         String black = i18n.get("dialog.black");
         String winnerSide = whiteWon ? white : black;
-        String winnerName = whiteWon ? this.getMainPanel().getPlayerWhite().getName()
-                                     : this.getMainPanel().getPlayerBlack().getName();
+        String whiteName = this.getMainPanel().getPlayerWhite().getName();
+        String blackName = this.getMainPanel().getPlayerBlack().getName();
+        String winnerName = whiteWon ? whiteName : blackName;
+        String matchup = whiteName + " " + this.getBoard().getScoreWhite()
+                + " : " + this.getBoard().getScoreBlack() + " " + blackName;
 
         int colWhiteX = 230;
         int colBlackX = 350;
 
         Dialog dialog = new Dialog(DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H)
-                .addCenteredLine(title, AssetLoader.font30, 30, Constants.COLOR_WHITE)
                 .addCenteredLine(i18n.get("dialog.winner") + ": " + winnerSide + " (" + winnerName + ")",
-                        AssetLoader.font20, 70, Constants.COLOR_WHITE)
+                        AssetLoader.font30, 35, Constants.COLOR_WHITE)
+                .addCenteredLine(matchup, AssetLoader.font20, 75, Constants.COLOR_WHITE)
                 .addLine(white, AssetLoader.font20, colWhiteX, 120, DrawString.MIDDLE, Constants.COLOR_WHITE)
                 .addLine(black, AssetLoader.font20, colBlackX, 120, DrawString.MIDDLE, Constants.COLOR_WHITE);
 
@@ -639,21 +638,6 @@ public class ChessBallGame extends ChessBallModel {
                 DrawString.MIDDLE, Constants.COLOR_WHITE);
         dialog.addLine(String.valueOf(blackVal), AssetLoader.font20, colBlackX, relativeY,
                 DrawString.MIDDLE, Constants.COLOR_WHITE);
-    }
-
-    /**
-     * "You won" if any human player is on the winning side. If both seats are You,
-     * always congratulations (one of them won).
-     */
-    private boolean computeYouWon() {
-        MainPanel mp = this.getMainPanel();
-        boolean whiteIsYou = mp.getPlayerWhite() instanceof You;
-        boolean blackIsYou = mp.getPlayerBlack() instanceof You;
-        boolean whiteWon = this.chessBallWinState == ChessBallWinState.WHITE_WIN;
-        if (whiteIsYou && blackIsYou) return true;
-        if (whiteIsYou && whiteWon) return true;
-        if (blackIsYou && !whiteWon) return true;
-        return false;
     }
 
 }

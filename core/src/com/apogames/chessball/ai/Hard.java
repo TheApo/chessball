@@ -35,7 +35,7 @@ public class Hard extends AlphaBetaAI {
     private static final int RANDOM_POOL_PERCENT   = 1;
 
     /** Path of the bundled trained transposition table. Built by self-play
-     *  ({@code SelfPlayMain}) and committed to {@code core/assets/ai/tt.txt}. */
+     *  ({@code SelfPlayMain}) and committed to {@code assets/ai/tt.txt}. */
     private static final String TT_ASSET_PATH = "ai/tt.txt";
 
     /** Shared TT — loaded lazily on first {@link Hard} construction so disk IO

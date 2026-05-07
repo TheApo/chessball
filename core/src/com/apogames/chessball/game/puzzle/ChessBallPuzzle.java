@@ -7,6 +7,7 @@ import com.apogames.chessball.backend.io.IOOnlineLibgdx;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.entity.Dialog;
+import com.apogames.chessball.entity.TextSegment;
 import com.apogames.chessball.solver.PuzzleSolver;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
@@ -71,15 +72,16 @@ public class ChessBallPuzzle extends ChessBallModel {
     }
 
     @Override
-    protected String getTopBarTitle() {
+    protected List<TextSegment> getTopBarSegments() {
         I18NBundle i18n = Localization.getInstance().getCommon();
+        // Level-selection screen: no active side-to-move yet, so plain title.
         if (this.isMenu) {
-            return i18n.get("topbar.puzzle.menu");
+            return singleSegment(i18n.get("topbar.puzzle.menu"));
         }
-        if (this.isRandomLevel) {
-            return i18n.get("topbar.puzzle.random");
-        }
-        return i18n.format("topbar.puzzle.level", this.level + 1);
+        String title = this.isRandomLevel
+                ? i18n.get("topbar.puzzle.random")
+                : i18n.format("topbar.puzzle.level", this.level + 1);
+        return withSideSuffix(title);
     }
 
     @Override

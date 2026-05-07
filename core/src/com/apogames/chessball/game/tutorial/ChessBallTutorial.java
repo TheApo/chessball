@@ -5,6 +5,7 @@ import com.apogames.chessball.asset.AssetLoader;
 import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
+import com.apogames.chessball.entity.TextSegment;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
 import com.apogames.chessball.game.enums.ChessBallColor;
@@ -12,6 +13,8 @@ import com.apogames.chessball.game.enums.ChessBallFigure;
 import com.apogames.chessball.game.enums.ChessBallWinState;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.math.GridPoint2;
+
+import java.util.List;
 
 public class ChessBallTutorial extends ChessBallModel {
 
@@ -36,8 +39,8 @@ public class ChessBallTutorial extends ChessBallModel {
     }
 
     @Override
-    protected String getTopBarTitle() {
-        return Localization.getInstance().getCommon().get("topbar.tutorial");
+    protected List<TextSegment> getTopBarSegments() {
+        return withSideSuffix(Localization.getInstance().getCommon().get("topbar.tutorial"));
     }
 
     @Override

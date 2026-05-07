@@ -29,6 +29,19 @@ task solverCheck(dependsOn: classes, type: JavaExec) {
     ignoreExitValue = true
 }
 
+// Headless self-play harness — runs many AI-vs-AI games and writes a populated
+// transposition table that ships in core/assets/ai/tt.txt.
+//   ./gradlew desktop:runSelfPlay --args="--games 100 --white Hard --black Hard"
+// workingDir is the repo root so the default --out path "core/assets/ai/tt.txt"
+// resolves correctly.
+task runSelfPlay(dependsOn: classes, type: JavaExec) {
+    mainClass.set("com.apogames.chessball.desktop.SelfPlayMain")
+    classpath = sourceSets.main.runtimeClasspath
+    standardInput = System.in
+    workingDir = rootProject.projectDir
+    ignoreExitValue = true
+}
+
 task debug(dependsOn: classes, type: JavaExec) {
     mainClass.set(project.mainClassName)
     classpath = sourceSets.main.runtimeClasspath

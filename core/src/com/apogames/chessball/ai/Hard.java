@@ -3,8 +3,11 @@ package com.apogames.chessball.ai;
 import com.apogames.chessball.Constants;
 import com.apogames.chessball.ai.algo.AlphaBetaAI;
 import com.apogames.chessball.ai.algo.Evaluator;
+import com.apogames.chessball.ai.algo.TranspositionTable;
 import com.apogames.chessball.ai.algo.TurnGenerator;
 import com.apogames.chessball.game.enums.ChessBallFigure;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.files.FileHandle;
 
 import java.util.Collections;
 import java.util.List;
@@ -31,7 +34,39 @@ public class Hard extends AlphaBetaAI {
     private static final int RANDOM_POOL_ABS_CAP   = 1_500;
     private static final int RANDOM_POOL_PERCENT   = 1;
 
-    public Hard() { super("Hard", 3, 4000L); }
+    /** Path of the bundled trained transposition table. Built by self-play
+     *  ({@code SelfPlayMain}) and committed to {@code core/assets/ai/tt.txt}. */
+    private static final String TT_ASSET_PATH = "ai/tt.txt";
+
+    /** Shared TT — loaded lazily on first {@link Hard} construction so disk IO
+     *  happens only once per process. Self-play overrides via
+     *  {@link AlphaBetaAI#setTranspositionTable} on its own instances. */
+    private static TranspositionTable sharedTT;
+
+    private static synchronized TranspositionTable sharedTT() {
+        if (sharedTT == null) {
+            sharedTT = new TranspositionTable();
+            try {
+                FileHandle fh = Gdx.files.internal(TT_ASSET_PATH);
+                if (fh.exists()) {
+                    sharedTT.loadFrom(fh);
+                    Gdx.app.log("Hard-TT", "loaded " + sharedTT.size()
+                            + " entries from " + fh.path());
+                } else {
+                    Gdx.app.log("Hard-TT", "no " + TT_ASSET_PATH + " — Hard plays without learned cache");
+                }
+            } catch (Throwable t) {
+                Gdx.app.log("Hard-TT", "load failed (" + t.getClass().getSimpleName()
+                        + "): " + t.getMessage() + " — continuing without cache");
+            }
+        }
+        return sharedTT;
+    }
+
+    public Hard() {
+        super("Hard", 3, 4000L);
+        setTranspositionTable(sharedTT());
+    }
 
     // HTML/GWT runs each scoringDfs node ~5-10× slower than the JVM, so giving
     // every candidate 1 s + unlimited count blows the 10 s wall budget. On HTML we

@@ -9,6 +9,7 @@ import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
 import com.apogames.chessball.entity.Dialog;
+import com.apogames.chessball.entity.TextSegment;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
 import com.apogames.chessball.game.MoveAnimator;
@@ -19,6 +20,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.math.GridPoint2;
 import com.badlogic.gdx.utils.I18NBundle;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ChessBallGame extends ChessBallModel {
@@ -60,10 +62,16 @@ public class ChessBallGame extends ChessBallModel {
     }
 
     @Override
-    protected String getTopBarTitle() {
-        return Localization.getInstance().getCommon().format("topbar.game.vs",
-                this.getMainPanel().getPlayerWhite().getName(),
-                this.getMainPanel().getPlayerBlack().getName());
+    protected List<TextSegment> getTopBarSegments() {
+        // White player name in white, black player name in black so the player can
+        // tell at a glance who is which side. Word "vs" itself stays white.
+        I18NBundle i18n = Localization.getInstance().getCommon();
+        String connector = " " + i18n.get("topbar.game.connector") + " ";
+        List<TextSegment> segments = new ArrayList<>(3);
+        segments.add(new TextSegment(this.getMainPanel().getPlayerWhite().getName(), Constants.COLOR_WHITE));
+        segments.add(new TextSegment(connector, Constants.COLOR_WHITE));
+        segments.add(new TextSegment(this.getMainPanel().getPlayerBlack().getName(), Constants.COLOR_BLACK));
+        return segments;
     }
 
     @Override

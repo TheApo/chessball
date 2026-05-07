@@ -69,6 +69,11 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
      *  in white-POV always; this flag tells {@link #describeTurn} whether to un-mirror
      *  coordinates so log lines match what the user sees on screen. */
     private boolean isBlack;
+    /** Optional cache of (position → search result). When non-null, every negamax
+     *  node probes/stores here so repeated positions skip re-search. Persistent
+     *  across {@code update()} calls; populated by self-play and shipped as
+     *  {@code assets/ai/tt.txt} for runtime use. */
+    protected TranspositionTable tt;
 
     protected AlphaBetaAI(String name, int maxDepth, long timeBudgetMs) {
         this.name = name;
@@ -78,10 +83,34 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
 
     @Override public String getName() { return name; }
 
+    /** Inject a transposition table (typically a shared global one for self-play,
+     *  or a disk-loaded cache at runtime). Pass {@code null} to disable caching. */
+    public void setTranspositionTable(TranspositionTable tt) { this.tt = tt; }
+    public TranspositionTable getTranspositionTable() { return tt; }
+
     @Override
     public List<ChessBallStep> update(ChessBallAIInformations info) {
         ChessBallFigure[][] board = info.getBoard();
         this.isBlack = info.isBlack();
+
+        // Root TT shortcut: if a previous search (or self-play training) covered
+        // this exact position with an EXACT bound at our depth or deeper, we trust
+        // its bestMove and skip the entire search + defense check. This is the
+        // payoff path for "Hard has learned" — common openings and replayed lines
+        // are essentially free.
+        if (tt != null) {
+            TranspositionTable.Entry hit = tt.get(Zobrist.hash(board, true));
+            if (hit != null && hit.flag == TranspositionTable.Flag.EXACT
+                    && hit.depth >= maxDepth
+                    && hit.bestMove != null && !hit.bestMove.isEmpty()) {
+                Gdx.app.log("AI-TT", getName() + ": root cache hit (depth "
+                        + hit.depth + ", score " + hit.score + ", visits "
+                        + hit.visits + "), skipping search");
+                hit.visits++;
+                return hit.bestMove;
+            }
+        }
+
         long deadline = System.currentTimeMillis() + timeBudgetMs;
 
         List<List<ChessBallStep>> rootTurns = TurnGenerator.generate(board, true);
@@ -98,11 +127,25 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
                 ? new ArrayList<RankedTurn>(fullRanking.subList(0, rootBeam))
                 : new ArrayList<RankedTurn>(fullRanking);
 
+        // Track the deepest fully-completed iteration — only the score from a
+        // complete iteration is sound, partial timeouts are discarded.
+        int reachedDepth = 1;
         for (int d = 2; d <= maxDepth; d++) {
             if (System.currentTimeMillis() >= deadline) break;
             List<RankedTurn> deeper = scoreRoot(board, negamaxRanking, d, deadline);
             if (deeper == null) break;
             negamaxRanking = deeper;
+            reachedDepth = d;
+        }
+
+        // Persist the root result so the next call from this exact position can
+        // skip the search via the root-cache shortcut at the top of update().
+        // Score is EXACT because scoreRoot uses the full ±2·GOAL window (no
+        // root-level α-β pruning), and we only cache after a COMPLETE iteration.
+        if (tt != null && !negamaxRanking.isEmpty() && reachedDepth >= 1) {
+            RankedTurn rootBest = negamaxRanking.get(0);
+            tt.put(Zobrist.hash(board, true), reachedDepth, rootBest.score,
+                    TranspositionTable.Flag.EXACT, rootBest.turn);
         }
 
         // Merge negamax-refined scores back into the full pool.
@@ -252,9 +295,27 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
     /**
      * Negamax with alpha-beta. {@code isMyTurn} flag tracks whose pieces move at this
      * node; the eval is always from AI POV (white), so negamax negates between plies.
+     *
+     * <p>When {@link #tt} is non-null, the standard chess-engine TT pattern is used:
+     * probe at entry — usable hit (depth ≥ ours, bound consistent with α/β) returns
+     * immediately; on exit store with EXACT / LOWER_BOUND / UPPER_BOUND derived from
+     * how {@code best} compares to the original α and to β.
      */
     private int negamax(ChessBallFigure[][] board, int depth, int alpha, int beta,
                         boolean isMyTurn, long deadline) {
+        final int alphaOrig = alpha;
+        final long hash = (tt != null) ? Zobrist.hash(board, isMyTurn) : 0L;
+        if (tt != null) {
+            TranspositionTable.Entry hit = tt.get(hash);
+            if (hit != null && hit.depth >= depth) {
+                switch (hit.flag) {
+                    case EXACT:       return hit.score;
+                    case LOWER_BOUND: if (hit.score >= beta)  return hit.score; break;
+                    case UPPER_BOUND: if (hit.score <= alpha) return hit.score; break;
+                }
+            }
+        }
+
         int eval = Evaluator.evaluate(board);
         if (eval >= Evaluator.GOAL || eval <= -Evaluator.GOAL) {
             return isMyTurn ? eval : -eval;
@@ -277,12 +338,22 @@ public abstract class AlphaBetaAI extends ChessBallPlayerAI {
         int upTo = Math.min(beam, ordered.size());
 
         int best = -Evaluator.GOAL * 2;
+        List<ChessBallStep> bestMove = null;
         for (int i = 0; i < upTo; i++) {
-            ChessBallFigure[][] after = TurnGenerator.applyTurn(board, ordered.get(i).turn);
+            List<ChessBallStep> turn = ordered.get(i).turn;
+            ChessBallFigure[][] after = TurnGenerator.applyTurn(board, turn);
             int v = -negamax(after, depth - 1, -beta, -alpha, !isMyTurn, deadline);
-            if (v > best) best = v;
+            if (v > best) { best = v; bestMove = turn; }
             if (best > alpha) alpha = best;
             if (alpha >= beta) break;
+        }
+
+        if (tt != null && bestMove != null) {
+            TranspositionTable.Flag flag;
+            if (best <= alphaOrig)   flag = TranspositionTable.Flag.UPPER_BOUND;
+            else if (best >= beta)   flag = TranspositionTable.Flag.LOWER_BOUND;
+            else                     flag = TranspositionTable.Flag.EXACT;
+            tt.put(hash, depth, best, flag, bestMove);
         }
         return best;
     }

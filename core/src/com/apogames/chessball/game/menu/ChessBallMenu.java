@@ -8,6 +8,7 @@ import com.apogames.chessball.backend.Game;
 import com.apogames.chessball.backend.io.IOOnlineLibgdx;
 import com.apogames.chessball.common.Localization;
 import com.apogames.chessball.entity.ApoButton;
+import com.apogames.chessball.entity.TextSegment;
 import com.apogames.chessball.game.ChessBallModel;
 import com.apogames.chessball.game.MainPanel;
 import com.apogames.chessball.game.MoveAnimator;
@@ -66,8 +67,8 @@ public class ChessBallMenu extends ChessBallModel {
     }
 
     @Override
-    protected String getTopBarTitle() {
-        return Localization.getInstance().getCommon().get("topbar.menu");
+    protected List<TextSegment> getTopBarSegments() {
+        return singleSegment(Localization.getInstance().getCommon().get("topbar.menu"));
     }
 
     @Override
@@ -131,24 +132,12 @@ public class ChessBallMenu extends ChessBallModel {
 
     @Override
     public void mousePressed(int x, int y, boolean isRightButton) {
-        onUserClick();
         super.mousePressed(x, y, isRightButton);
     }
 
     @Override
     public void mouseButtonReleased(int x, int y, boolean isRightButton) {
-        onUserClick();
         super.mouseButtonReleased(x, y, isRightButton);
-    }
-
-    /** Any click resets the idle timer and aborts a running demo (board → start position). */
-    private void onUserClick() {
-        idleTime = 0;
-        if (demoPhase != DemoPhase.IDLE) {
-            resetDemoState();
-            this.getBoard().reset();
-            Game.markDirty();
-        }
     }
 
     private void resetDemoState() {

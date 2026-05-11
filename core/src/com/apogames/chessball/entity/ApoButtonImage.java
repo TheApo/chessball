@@ -37,12 +37,13 @@ public class ApoButtonImage extends ApoButton {
 			
 			renderOutline(screen, changeX, changeY);
 
-			if ((this.getText() != null) && (this.getText().length() > 0)) {
+			if ((this.getText() != null) && (!this.getText().isEmpty())) {
 				int addY = 0;
 				if (isSolved()) {
 					addY = -10;
 				}
-				drawString(screen,changeX, changeY + addY, Constants.COLOR_WHITE);
+				drawString(screen,changeX + 1, changeY + addY + 1, Constants.COLOR_WHITE);
+				drawString(screen,changeX, changeY + addY, Constants.COLOR_BLACK);
 			}
 		}
 	}
